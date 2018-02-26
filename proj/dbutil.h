@@ -6,6 +6,8 @@
 
 #define __initializer __attribute__((constructor))
 
+#define __packed __attribute__((packed))
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
