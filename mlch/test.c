@@ -141,11 +141,8 @@ static void *__lookup(uint64_t key, int lev)
 static size_t count = 0;
 static long lookups = 0;
 
-#define WEIRD 0
 
-#if WEIRD
-
-static void *lookup(uint64_t key)
+static void *lookup_w(uint64_t key)
 {
 	void *ret;
 	for(int i=minlevel;i<=level;i++) {
@@ -155,9 +152,10 @@ static void *lookup(uint64_t key)
 	return NULL;
 }
 
-static void insert(uint64_t key, void *item)
+static void insert_w(uint64_t key, void *item)
 {
-	if(lookup(key)) return;
+	count++;
+	if(lookup_w(key)) return;
 	if(count * 4 >= sz) {
 r:
 		level++;
@@ -168,10 +166,10 @@ r:
 
 	}
 	if(__insert(key, item) == 0) goto r;
-	count++;
 }
 
-#else
+
+
 
 static void *lookup(uint64_t key)
 {
@@ -181,35 +179,35 @@ static void *lookup(uint64_t key)
 
 static void insert(uint64_t key, void *item)
 {
+	count++;
 	if(lookup(key)) return;
 	if(count * 4 >= sz) {
 r:
 		rehash(level+1);
 	}
 	if(__insert(key, item) == 0) goto r;
-	count++;
 }
 
-#endif
 
-
-int main()
+int main(int argc, char **argv)
 {
+	srandom(atoi(argv[1]));
+	int total = atoi(argv[2]);
+	int w = argv[3][0] == 'w';
+
 	minlevel = level = 8;
 	sz = (1 << level);
 	buckets = calloc(sz, sizeof(struct bucket));
 
-	for(int i=0;i<10000;i++) {
+	for(int i=0;i<total;i++) {
 		unsigned long k = random();
-		insert(k, (void *)1);
-
+		if(w) insert_w(k, (void *)1);
+		else insert(k, (void *)1);
 	}
 
-	fprintf(stderr, "%s:    COUNT     SIZE   COLLIS  LOOKUPS REHASHES    MOVES\n", WEIRD ? "new   " : "old   ");
-	fprintf(stderr, "RESULT: %8ld %8ld %8ld %8ld %8ld %8ld\n",
-			count, sz, collis, lookups, rehashes, moves);
-	fprintf(stderr, "RES RE: %8ld          %8ld                   %8ld\n",
-			updates_re, collis_re, moves_re);
+	fprintf(stderr, "%s:    COUNT     SIZE   COLLIS  LOOKUPS REHASHES    MOVES     UPRE   COLLRE   MOVERE\n", w ? "new   " : "old   ");
+	fprintf(stderr, "RESULT: %8ld %8ld %8ld %8ld %8ld %8ld %8ld %8ld %8ld\n",
+			count, sz, collis, lookups, rehashes, moves, updates_re, collis_re, moves_re);
 
 }
 
