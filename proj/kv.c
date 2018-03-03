@@ -7,24 +7,26 @@
 #include <sys/mman.h>
 #include "nvkv.h"
 
-static uintptr_t _ptr_translate(DB *db, uintptr_t offset)
+#define PAGE_SIZE 0x1000
+#define TYPE_DATA 0
+#define TYPE_META 1
+
+static uintptr_t _ptr_translate(DB *db, int type, uintptr_t offset)
 {
-	return (uintptr_t)db->base + offset;
+	return (uintptr_t)db->base + (offset / PAGE_SIZE)*2*PAGE_SIZE + (offset % PAGE_SIZE) + (type == TYPE_DATA ? PAGE_SIZE : 0);
 }
 
-static uintptr_t _ptr_canon(DB *db, uintptr_t ptr)
+static uintptr_t _ptr_canon(DB *db, int type, uintptr_t ptr)
 {
-	return ptr - (uintptr_t)db->base;
+	uintptr_t addr = (ptr - (uintptr_t)db->base) - (type == TYPE_DATA ? PAGE_SIZE : 0);
+	return addr - (addr / PAGE_SIZE)*(PAGE_SIZE / 2);
 }
 
-#define ptr_translate(db, ptr) \
-	({ (typeof(ptr))_ptr_translate(db,(uintptr_t)(ptr)); })
+#define ptr_translate(db, type, ptr) \
+	({ (typeof(ptr))_ptr_translate(db,type,(uintptr_t)(ptr)); })
 
-#define ptr_canon(db, ptr) \
-	({ (typeof(ptr))_ptr_canon(db,(uintptr_t)(ptr)); })
-
-
-
+#define ptr_canon(db, type, ptr) \
+	({ (typeof(ptr))_ptr_canon(db,type,(uintptr_t)(ptr)); })
 
 static int _db_open(DB *db, DB_TXN *txnid, const char *file, 
 		const char *database, DBTYPE type, uint32_t flags, int mode)
