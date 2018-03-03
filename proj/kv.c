@@ -75,9 +75,76 @@ err_close:
 	return ret;
 }
 
+static uint64_t djb2(void *_data, size_t len)
+{
+	unsigned char *data = _data;
+	unsigned long hash = 5381;
+	int c;
+	while(len--)
+		hash = ((hash << 5) + hash) ^ *data++;
+	return hash;
+}
+
+static uint64_t hash(void *data, size_t len, int blevel)
+{
+	return djb2(data, len) & ((1 << blevel) - 1);
+}
+
+#define __boundinc(i,l) \
+	({ (i+1) & ((1 << l) - 1); })
+
+static bool __compare(DB *db, struct bucket *b, DBT *v)
+{
+	return v->size == b->len && !memcmp(ptr_translate(db, b->ptr), v->data, b->len);
+}
+
+static void *__loadin(DB *db, DBT *v)
+{
+	
+}
+
+static void __rehash(DB *db, size_t sz)
+{
+	
+}
+
+#define DELETED (void *)-1
+static int __insert(DB *db, DBT *key, DBT *data)
+{
+	uint64_t h = hash(key->data, key->size, db->hdr->blevel);
+	uint64_t i = h;
+	do {
+		if(db->hdr->buckets[i].ptr == NULL) {
+			break;
+		} else if(db->hdr->buckets[i].ptr == DELETED) {
+			break;
+		} else if(__compare(db, &db->hdr->buckets[i], key)) {
+			return EEXIST;
+		}
+		i = __boundinc(i, db->hdr->blevel);
+	} while(i != h);
+	if(i == h) {
+		abort();
+	}
+	
+	void *p = __loadin(db, key);
+	db->hdr->buckets[i].ptr = p;
+	db->hdr->buckets[i].len = key->size;
+	return 0;
+}
+
 static int _db_put(DB *db, DB_TXN *txnid, DBT *key, DBT *data, uint32_t flags)
 {
+	if(flags != 0) {
+		return ENOTSUP;
+	}
+	DEBUG("putting %s(%ld):%s(%ld)\n", key->data, key->size, data->data, data->size);
 
+	if(db->hdr->count * 4 > (1 << db->hdr->blevel) - 1) {
+		__rehash(db, db->hdr->blevel + 1);
+	}
+
+	return __insert(db, key, data);
 }
 
 static int _db_get(DB *db, DB_TXN *txnid, DBT *key, DBT *data, uint32_t flags)

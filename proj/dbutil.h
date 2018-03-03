@@ -13,3 +13,5 @@
 #include <stdint.h>
 
 
+#define DEBUG(fmt,...) \
+	fprintf(stderr, fmt, ##__VA_ARGS__)
