@@ -23,10 +23,10 @@ static uintptr_t _ptr_canon(DB *db, int type, uintptr_t ptr)
 }
 
 #define ptr_translate(db, type, ptr) \
-	({ (typeof(ptr))_ptr_translate(db,type,(uintptr_t)(ptr)); })
+	__extension__({ (typeof(ptr))_ptr_translate(db,type,(uintptr_t)(ptr)); })
 
 #define ptr_canon(db, type, ptr) \
-	({ (typeof(ptr))_ptr_canon(db,type,(uintptr_t)(ptr)); })
+	__extension__({ (typeof(ptr))_ptr_canon(db,type,(uintptr_t)(ptr)); })
 
 static int _db_open(DB *db, DB_TXN *txnid, const char *file, 
 		const char *database, DBTYPE type, uint32_t flags, int mode)
@@ -77,62 +77,172 @@ err_close:
 	return ret;
 }
 
-static uint64_t djb2(void *_data, size_t len)
+__attribute__((const))
+static struct bucket *__get_bucket(DB *db, size_t b)
 {
-	unsigned char *data = _data;
-	unsigned long hash = 5381;
-	int c;
-	while(len--)
-		hash = ((hash << 5) + hash) ^ *data++;
-	return hash;
+	struct bucket *bucket = ((struct bucket *)sizeof(*db->hdr)) + b;
+	return ptr_translate(db, TYPE_META, bucket);
 }
-
-static uint64_t hash(void *data, size_t len, int blevel)
-{
-	return djb2(data, len) & ((1 << blevel) - 1);
-}
-
-#define __boundinc(i,l) \
-	({ (i+1) & ((1 << l) - 1); })
 
 static bool __compare(DB *db, struct bucket *b, DBT *v)
 {
-	return v->size == b->len && !memcmp(ptr_translate(db, b->ptr), v->data, b->len);
+	struct dbitem *item = ptr_translate(db, TYPE_DATA, b->kp);
+	return v->size == item->len && !memcmp(item->data, v->data, v->size);
 }
+
+#define GOLDEN_RATIO_PRIME_64 0x9e37fffffffc0001UL
+
+static uint64_t hash_gr_64(const void *data, size_t len, int bits)
+{
+	uint64_t value = GOLDEN_RATIO_PRIME_64;
+	for(size_t i=0;i<len / 8;i++) {
+		const uint64_t *d = data;
+		value ^= d[i] * GOLDEN_RATIO_PRIME_64;
+	}
+	return value >> (64 - bits);
+}
+
+static uint64_t hash_djb2_64(const void *d, size_t len, int bits)
+{
+	uint64_t hash = 5381;
+	const unsigned char *data = (const unsigned char *)d;
+	for(size_t i=0;i<len;i++) {
+		hash = ((hash << 5) + hash) ^ *data++;
+	}
+	return hash & ((1 << bits) - 1);
+}
+
+#define USED 1
+#define SECOND 2
+
+static void __do_insert(DB *db, size_t b, struct dbitem *key, struct dbitem *item, int fl)
+{
+	struct bucket *bucket = __get_bucket(db, b);
+	bucket->kp = key;
+	bucket->dp = item;
+	bucket->flags = fl;
+}
+
+static int __move(DB *db, size_t b)
+{
+	uint64_t fl;
+	size_t partner;
+	struct bucket *bucket = __get_bucket(db, b);
+	struct bucket tmp = *bucket;
+	struct dbitem *key = ptr_translate(db, TYPE_DATA, tmp.kp);
+	if(tmp.flags == 2) {
+		partner = hash_gr_64(key->data, key->len, db->hdr->blevel);
+		fl = 1;
+	} else {
+		partner = hash_djb2_64(key->data, key->len, db->hdr->blevel);
+		fl = 2;
+	}
+	bucket->kp = 0;
+	bucket->flags = 0;
+	struct bucket *partner_bucket = __get_bucket(db, partner);
+	if(partner_bucket->flags) {
+		__move(db, partner);
+	}
+	if(partner_bucket->flags != 0)
+		return 0;
+	__do_insert(db, partner, tmp.kp, tmp.dp, fl);
+	return 1;
+}
+
+static int __insert(DB *db, struct dbitem *__key, struct dbitem *__item)
+{
+	struct dbitem *key = ptr_translate(db, TYPE_DATA, __key);
+	struct dbitem *item = ptr_translate(db, TYPE_DATA, __item);
+	
+	size_t b1 = hash_gr_64(key->data, key->len, db->hdr->blevel);
+	size_t b2 = hash_djb2_64(key->data, key->len, db->hdr->blevel);
+
+	struct bucket *buck1 = __get_bucket(db, b1);
+	struct bucket *buck2 = __get_bucket(db, b2);
+
+	if(buck1->flags == 0) {
+		__do_insert(db, b1, __key, __item, 1);
+	} else if(buck2->flags == 0) {
+		__do_insert(db, b2, __key, __item, 2);
+	} else if(buck1->flags == 1) {
+		if(__move(db, b1) == 0) goto a;
+		__do_insert(db, b1, __key, __item, 1);
+	} else if(buck2->flags == 1) {
+a:
+		if(__move(db, b2) == 0) return 0;
+		__do_insert(db, b2, __key, __item, 1);
+	} else {
+		if(__move(db, b1) == 0) return 0;
+		__do_insert(db, b1, __key, __item, 1);
+	}
+	return 1;
+}
+
+static struct dbitem *__lookup(DB *db, DBT *search, int lev)
+{
+	size_t b1 = hash_gr_64(search->data, search->size, lev);
+	size_t b2 = hash_djb2_64(search->data, search->size, lev);
+
+	struct bucket *buck1 = __get_bucket(db, b1);
+	struct bucket *buck2 = __get_bucket(db, b2);
+
+	if(buck1->flags && __compare(db, buck1, search)) {
+		return buck1->dp;
+	} else if(buck2->flags && __compare(db, buck1, search)) {
+		return buck2->dp;
+	}
+	return NULL;
+}
+
+static void *lookup(DB *db, DBT *search)
+{
+	void *ret;
+	for(unsigned int i=db->hdr->minlevel;i<=db->hdr->blevel;i++) {
+		if((ret=__lookup(db, search, i))) return ret;
+	}
+	return NULL;
+}
+
+static bool insert(DB *db, struct dbitem *__key, struct dbitem *__item)
+{
+	struct dbitem *key = ptr_translate(db, TYPE_DATA, __key);
+	DBT search = {.data = key->data, .size = key->len};
+	if(lookup(db, &search)) return false;
+	db->hdr->count++;
+	if(db->hdr->count * 4 >= (1ul << db->hdr->blevel)) {
+r:
+		db->hdr->blevel++;
+	}
+	if(__insert(db, __key, __item) == 0) goto r;
+	return true;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 static void *__loadin(DB *db, DBT *v)
 {
 	
-}
-
-static void __rehash(DB *db, size_t sz)
-{
-	
-}
-
-#define DELETED (void *)-1
-static int __insert(DB *db, DBT *key, DBT *data)
-{
-	uint64_t h = hash(key->data, key->size, db->hdr->blevel);
-	uint64_t i = h;
-	do {
-		if(db->hdr->buckets[i].ptr == NULL) {
-			break;
-		} else if(db->hdr->buckets[i].ptr == DELETED) {
-			break;
-		} else if(__compare(db, &db->hdr->buckets[i], key)) {
-			return EEXIST;
-		}
-		i = __boundinc(i, db->hdr->blevel);
-	} while(i != h);
-	if(i == h) {
-		abort();
-	}
-	
-	void *p = __loadin(db, key);
-	db->hdr->buckets[i].ptr = p;
-	db->hdr->buckets[i].len = key->size;
-	return 0;
 }
 
 static int _db_put(DB *db, DB_TXN *txnid, DBT *key, DBT *data, uint32_t flags)
@@ -141,12 +251,6 @@ static int _db_put(DB *db, DB_TXN *txnid, DBT *key, DBT *data, uint32_t flags)
 		return ENOTSUP;
 	}
 	DEBUG("putting %s(%ld):%s(%ld)\n", key->data, key->size, data->data, data->size);
-
-	if(db->hdr->count * 4 > (1 << db->hdr->blevel) - 1) {
-		__rehash(db, db->hdr->blevel + 1);
-	}
-
-	return __insert(db, key, data);
 }
 
 static int _db_get(DB *db, DB_TXN *txnid, DBT *key, DBT *data, uint32_t flags)

@@ -23,9 +23,14 @@ typedef struct dbtx DB_TXN;
 typedef struct dbenv DB_ENV;
 typedef struct kvt DBT;
 
+struct dbitem {
+	uint64_t len;
+	unsigned char data[];
+} __packed;
+
 struct bucket {
-	void *ptr;
-	size_t len;
+	struct dbitem *kp, *dp;
+	uint64_t flags;
 };
 
 #define _NVKV_MAGIC 0x332994ab
@@ -36,7 +41,7 @@ struct dbheader {
 	uint8_t pad0;
 
 	uint64_t count;
-	uint32_t blevel;
+	uint32_t blevel, minlevel;
 	struct bucket buckets[];
 } __packed;
 

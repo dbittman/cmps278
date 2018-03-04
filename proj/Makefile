@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Og -g -Wall -Wextra -std=gnu11 -Wpedantic -fPIC -include dbutil.h
+CFLAGS=-Og -g -Wall -Wextra -std=gnu11 -Wpedantic -fPIC -include dbutil.h -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable
 
 S_LIB=kv.c
 S_DRV=drv.c
