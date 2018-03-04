@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <stdarg.h>
+#define _GNU_SOURCE
 #include <sys/mman.h>
 #include "nvkv.h"
 
@@ -27,6 +28,23 @@ static uintptr_t _ptr_canon(DB *db, int type, uintptr_t ptr)
 
 #define ptr_canon(db, type, ptr) \
 	__extension__({ (typeof(ptr))_ptr_canon(db,type,(uintptr_t)(ptr)); })
+
+#define ALIGNON(v,a) \
+	__extension__({ (((v)-1) & ~((a)-1)) + (a); })
+
+static void grow_database(DB *db, void *ptr)
+{
+	uint64_t off = ALIGNON((uintptr_t)ptr - (uintptr_t)db->base, PAGE_SIZE);
+	fprintf(stderr, ":: %p %lx\n", ptr, off);
+	munmap(db->base, db->size);
+	db->size = db->size > off ? db->size : off;
+	if(ftruncate(db->fd, db->size) < 0) {
+		abort();
+	}
+	db->base = mmap(db->base, db->size, PROT_READ | PROT_WRITE, MAP_SHARED, db->fd, 0);
+	db->hdr = db->base;
+	fprintf(stderr, ":: grow %p -> %p\n", db->base, (char *)db->base + db->size);
+}
 
 static int _db_open(DB *db, DB_TXN *txnid, const char *file, 
 		const char *database, DBTYPE type, uint32_t flags, int mode)
@@ -59,16 +77,20 @@ static int _db_open(DB *db, DB_TXN *txnid, const char *file,
 	}
 
 	db->hdr = db->base;
+	db->size = st.st_size;
 	if(created) {
 		db->hdr->type = type;
 		db->hdr->flags = 0;
 		db->hdr->magic = _NVKV_MAGIC;
+		db->hdr->blevel = 10;
+		db->hdr->minlevel = 10;
+		uint64_t bmax = ((1ull << db->hdr->blevel) - 1);
+		grow_database(db, ptr_translate(db, TYPE_META, (void *)(bmax * sizeof(struct bucket))));
 	} else if(db->hdr->magic != _NVKV_MAGIC) {
 		munmap(db->base, st.st_size);
 		errno = EINVAL;
 		goto err_close;
 	}
-	db->size = st.st_size;
 
 	return 0;
 err_close:
@@ -80,7 +102,8 @@ err_close:
 __attribute__((const))
 static struct bucket *__get_bucket(DB *db, size_t b)
 {
-	struct bucket *bucket = ((struct bucket *)sizeof(*db->hdr)) + b;
+	struct bucket *bucket = ((struct bucket *)PAGE_SIZE) + b;
+	fprintf(stderr, ":: %p %ld -> %p\n", bucket, b, ptr_translate(db, TYPE_META, bucket));
 	return ptr_translate(db, TYPE_META, bucket);
 }
 
@@ -153,7 +176,9 @@ static int __insert(DB *db, struct dbitem *__key, struct dbitem *__item)
 {
 	struct dbitem *key = ptr_translate(db, TYPE_DATA, __key);
 	struct dbitem *item = ptr_translate(db, TYPE_DATA, __item);
-	
+
+	fprintf(stderr, ":: -> %p %p: %s %ld\n", __key, key, key->data, key->len);
+
 	size_t b1 = hash_gr_64(key->data, key->len, db->hdr->blevel);
 	size_t b2 = hash_djb2_64(key->data, key->len, db->hdr->blevel);
 
@@ -203,18 +228,16 @@ static void *lookup(DB *db, DBT *search)
 	return NULL;
 }
 
-static bool insert(DB *db, struct dbitem *__key, struct dbitem *__item)
+static void insert(DB *db, struct dbitem *__key, struct dbitem *__item)
 {
-	struct dbitem *key = ptr_translate(db, TYPE_DATA, __key);
-	DBT search = {.data = key->data, .size = key->len};
-	if(lookup(db, &search)) return false;
 	db->hdr->count++;
 	if(db->hdr->count * 4 >= (1ul << db->hdr->blevel)) {
 r:
 		db->hdr->blevel++;
+		uint64_t bmax = ((1ull << db->hdr->blevel) - 1);
+		grow_database(db, ptr_translate(db, TYPE_META, (void *)(bmax * sizeof(struct bucket))));
 	}
 	if(__insert(db, __key, __item) == 0) goto r;
-	return true;
 }
 
 
@@ -239,10 +262,14 @@ r:
 
 
 
-
-static void *__loadin(DB *db, DBT *v)
+static struct dbitem *__loadin(DB *db, DBT *v)
 {
-	
+	struct dbitem *item = ptr_translate(db, TYPE_DATA, (void *)db->hdr->dataoff);
+	db->hdr->dataoff += ALIGNON(sizeof(struct dbitem) + v->size, 8);
+	grow_database(db, ptr_translate(db, TYPE_DATA, (void *)(db->hdr->dataoff)));
+	item->len = v->size;
+	memcpy(item->data, v->data, v->size);
+	return ptr_canon(db, TYPE_DATA, item);
 }
 
 static int _db_put(DB *db, DB_TXN *txnid, DBT *key, DBT *data, uint32_t flags)
@@ -250,7 +277,13 @@ static int _db_put(DB *db, DB_TXN *txnid, DBT *key, DBT *data, uint32_t flags)
 	if(flags != 0) {
 		return ENOTSUP;
 	}
+	if(txnid != NULL) return ENOTSUP;
 	DEBUG("putting %s(%ld):%s(%ld)\n", key->data, key->size, data->data, data->size);
+	if(lookup(db, key)) return EEXIST;
+	struct dbitem *dbik = __loadin(db, key);
+	struct dbitem *dbid = __loadin(db, data);
+	insert(db, dbik, dbid);
+	return 0;
 }
 
 static int _db_get(DB *db, DB_TXN *txnid, DBT *key, DBT *data, uint32_t flags)
@@ -258,11 +291,23 @@ static int _db_get(DB *db, DB_TXN *txnid, DBT *key, DBT *data, uint32_t flags)
 	if(flags != 0) {
 		return ENOTSUP;
 	}
+	if(txnid != NULL) return ENOTSUP;
+	struct dbitem *__item = lookup(db, key);
+	if(__item == NULL) return ENOENT;
+	struct dbitem *item = ptr_translate(db, TYPE_DATA, __item);
+	data->data = item->data;
+	data->size = item->len;
+	return 0;
 }
 
 static int _db_del(DB *db, DB_TXN *txnid, DBT *key, uint32_t flags)
 {
+	if(flags != 0) {
+		return ENOTSUP;
+	}
+	if(txnid != NULL) return ENOTSUP;
 
+	return ENOTSUP;
 }
 
 static int _db_close(DB *db, uint32_t flags __unused)
@@ -275,6 +320,7 @@ static int _db_close(DB *db, uint32_t flags __unused)
 static int _db_sync(DB *db, uint32_t flags)
 {
 
+	return 0;
 }
 
 static void _db_err(DB *db, int error, const char *fmt, ...)

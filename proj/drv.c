@@ -16,6 +16,8 @@ int main()
 	DB *dbp;
 	int ret;
 
+	system("rm " DATABASE);
+
 	if((ret = db_create(&dbp, NULL, 0)) != 0) {
 		fprintf(stderr, "db_create: %s\n", db_strerror(ret));
 		exit(1);

@@ -42,7 +42,7 @@ struct dbheader {
 
 	uint64_t count;
 	uint32_t blevel, minlevel;
-	struct bucket buckets[];
+	uint64_t dataoff;
 } __packed;
 
 struct nvkv {
