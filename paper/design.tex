@@ -1,1 +1,15 @@
 \section{Design}
+
+
+\subsection{Transaction Sizes}
+
+Key points: transactions have limited size, both in space and time. A
+transaction cannot take too many instructions, nor have too many memory
+accesses. Of course, we're designing under an assumption about how transactions
+will work... they may turn out differently. So we're designing pessimistically.
+
+#memory accesses matter more than number of instructions, but the total length
+matters too.
+
+We can also optimize certain parts of the code with Os and other parts with
+O2/3.
