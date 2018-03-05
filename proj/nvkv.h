@@ -31,7 +31,8 @@ struct dbitem {
 struct bucket {
 	struct dbitem *kp, *dp;
 	uint64_t flags;
-};
+	uint64_t pad;
+} __packed;
 
 #define _NVKV_MAGIC 0x332994ab
 struct dbheader {

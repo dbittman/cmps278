@@ -29,19 +29,49 @@ int main()
 	}
 
 
-	DBT key, data;
-	memset(&key, 0, sizeof(key));
-	memset(&data, 0, sizeof(data));
-	key.data = "fruit";
-	key.size = sizeof("fruit");
-	data.data = "apple";
-	data.size = sizeof("apple");
+	uint64_t count =     1000000;
+	for(uint64_t i = 0;i<count;i++) {
+		DBT key, data;
+		memset(&key, 0, sizeof(key));
+		memset(&data, 0, sizeof(data));
 
-	if ((ret = dbp->put(dbp, NULL, &key, &data, 0)) == 0)
-		printf("db: %s: key stored.\n", (char *)key.data);
-	else {
-		dbp->err(dbp, ret, "DB->put");
-		exit(1);
+		key.data = &i;
+		key.size = sizeof(i);
+		data.data = &i;
+		data.size = sizeof(i);
+
+		if((ret = dbp->put(dbp, NULL, &key, &data, 0)) == 0)
+			fprintf(stderr, "db: %lx: key stored.\n", *(uint64_t *)key.data);
+		else {
+			dbp->err(dbp, ret, "DB->put");
+			exit(1);
+		}
+		memset(&data, 0, sizeof(data));
+		if((ret = dbp->get(dbp, NULL, &key, &data, 0)) == 0);
+	//		printf("db: %lx: key retrieved: data was %lx.\n",
+	//				*(uint64_t *)key.data, *(uint64_t *)data.data);
+		else {
+			dbp->err(dbp, ret, "DB->get");
+			exit(1);
+		}
 	}
+
+	for(uint64_t i = 0;i<count;i++) {
+		DBT key, data;
+		memset(&key, 0, sizeof(key));
+		memset(&data, 0, sizeof(data));
+
+		key.data = &i;
+		key.size = sizeof(i);
+		data.data = &i;
+		data.size = sizeof(i);
+
+		memset(&data, 0, sizeof(data));
+		if((ret = dbp->get(dbp, NULL, &key, &data, 0)) != 0) {
+			dbp->err(dbp, ret, "DB->get %lx", i);
+			exit(1);
+		}
+	}
+
 }
 
