@@ -7,10 +7,24 @@
 #define _GNU_SOURCE
 #include <sys/mman.h>
 #include "nvkv.h"
+#include <time.h>
+#include <sys/time.h>
 
 #define PAGE_SIZE 0x1000
-#define TYPE_DATA 0
-#define TYPE_META 1
+#define TYPE_DATA 1
+#define TYPE_META 0
+void timespec_diff(struct timespec *start, struct timespec *stop,
+                   struct timespec *result)
+{
+    if ((stop->tv_nsec - start->tv_nsec) < 0) {
+        result->tv_sec = stop->tv_sec - start->tv_sec - 1;
+        result->tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
+    } else {
+        result->tv_sec = stop->tv_sec - start->tv_sec;
+        result->tv_nsec = stop->tv_nsec - start->tv_nsec;
+    }
+}
+
 
 static uintptr_t _ptr_translate(DB *db, int type, uintptr_t offset)
 {
@@ -43,7 +57,7 @@ static void grow_database(DB *db, void *ptr)
 	}
 	db->base = mmap(db->base, db->size, PROT_READ | PROT_WRITE, MAP_SHARED, db->fd, 0);
 	db->hdr = db->base;
-	fprintf(stderr, ":: grow %p -> %p\n", db->base, (char *)db->base + db->size);
+	//fprintf(stderr, ":: grow %p -> %p\n", db->base, (char *)db->base + db->size);
 }
 
 static int _db_open(DB *db, DB_TXN *txnid, const char *file, 
@@ -110,23 +124,96 @@ static struct bucket *__get_bucket(DB *db, size_t b)
 static bool __compare(DB *db, struct bucket *b, DBT *v)
 {
 	struct dbitem *item = ptr_translate(db, TYPE_DATA, b->kp);
-	//fprintf(stderr, ":: compare: %ld %ld :: %lx %lx\n", v->size, item->len,
-	//		*(uint64_t *)v->data, *(uint64_t *)item->data);
-	return v->size == item->len && !memcmp(item->data, v->data, v->size);
+	bool r = v->size == item->len && !memcmp(item->data, v->data, v->size);
+	return r;
 }
 
 #define GOLDEN_RATIO_PRIME_64 0x9e37fffffffc0001UL
 
+#define get16bits(d) (*((const uint16_t *) (d)))
+
+/* Peter Weinberger's */
+int hashpjw(const char *s, size_t len)
+{
+	const char *p;
+	unsigned int h, g;
+	h = 0;
+	for(p=s; len--; p++){
+		h = (h<<4) + *p;
+		if (g = h&0xF0000000) {
+			h ^= g>>24;
+			h ^= g;
+		}
+	}
+	return h;
+}
+
+//http://www.azillionmonkeys.com/qed/hash.html
+static uint32_t SuperFastHash (const char * data, int len) {
+	uint32_t hash = len, tmp;
+	int rem;
+
+    if (len <= 0 || data == NULL) return 0;
+
+    rem = len & 3;
+    len >>= 2;
+
+    /* Main loop */
+    for (;len > 0; len--) {
+        hash  += get16bits (data);
+        tmp    = (get16bits (data+2) << 11) ^ hash;
+        hash   = (hash << 16) ^ tmp;
+        data  += 2*sizeof (uint16_t);
+        hash  += hash >> 11;
+    }
+
+    /* Handle end cases */
+    switch (rem) {
+        case 3: hash += get16bits (data);
+                hash ^= hash << 16;
+                hash ^= ((signed char)data[sizeof (uint16_t)]) << 18;
+                hash += hash >> 11;
+                break;
+        case 2: hash += get16bits (data);
+                hash ^= hash << 11;
+                hash += hash >> 17;
+                break;
+        case 1: hash += (signed char)*data;
+                hash ^= hash << 10;
+                hash += hash >> 1;
+    }
+
+    /* Force "avalanching" of final 127 bits */
+    hash ^= hash << 3;
+    hash += hash >> 5;
+    hash ^= hash << 4;
+    hash += hash >> 17;
+    hash ^= hash << 25;
+    hash += hash >> 6;
+
+    return hash;
+}
+
 static uint64_t hash_gr_64(const void *data, size_t len, int bits)
 {
-	uint64_t value = 0;
-	for(size_t i=0;i<len / 8;i++) {
+	uint64_t value = ~0;
+
+	size_t i=0;
+	for(;i<len / 8;i++) {
 		const uint64_t *d = data;
 		value ^= d[i] * GOLDEN_RATIO_PRIME_64;
+	}
+	if(i == 0) {
+		abort();
+		for(;i<len;i++) {
+			const uint8_t *d = data;
+			value += d[i];
+		}
 	}
 	return (value * GOLDEN_RATIO_PRIME_64) >> (64 - bits);
 }
 
+//http://www.cse.yorku.ca/~oz/hash.html
 static uint64_t hash_djb2_64(const void *d, size_t len, int bits)
 {
 	uint64_t hash = 5381;
@@ -134,7 +221,7 @@ static uint64_t hash_djb2_64(const void *d, size_t len, int bits)
 	for(size_t i=0;i<len;i++) {
 		hash = ((hash << 5) + hash) ^ *data++;
 	}
-	return hash & ((1 << bits) - 1);
+	return (hash ^ (SuperFastHash(d, len))) & ((1 << bits) - 1);
 }
 
 #define USED 1
@@ -192,21 +279,21 @@ static int __move(DB *db, size_t b)
 static int __insert(DB *db, struct dbitem *__key, struct dbitem *__item)
 {
 	struct dbitem *key = ptr_translate(db, TYPE_DATA, __key);
-	struct dbitem *item = ptr_translate(db, TYPE_DATA, __item);
-
 	size_t b1 = hash_gr_64(key->data, key->len, db->hdr->blevel);
-	size_t b2 = hash_djb2_64(key->data, key->len, db->hdr->blevel);
-
-	if(b1 == b2) {
-		return 0;
-	}
-
 	struct bucket *buck1 = __get_bucket(db, b1);
-	struct bucket *buck2 = __get_bucket(db, b2);
 
 	if(buck1->flags == 0) {
 		__do_insert(db, b1, __key, __item, 1);
-	} else if(buck2->flags == 0) {
+		return 1;
+	}
+
+	size_t b2 = hash_djb2_64(key->data, key->len, db->hdr->blevel);
+	if(b1 == b2) {
+		return 0;
+	}
+	struct bucket *buck2 = __get_bucket(db, b2);
+
+	if(buck2->flags == 0) {
 		__do_insert(db, b2, __key, __item, 2);
 	} else if(buck1->flags == 1) {
 		if(__move(db, b1) == 0) goto a;
@@ -225,27 +312,27 @@ a:
 static struct dbitem *__lookup(DB *db, DBT *search, int lev)
 {
 	size_t b1 = hash_gr_64(search->data, search->size, lev);
-	size_t b2 = hash_djb2_64(search->data, search->size, lev);
-
 	struct bucket *buck1 = __get_bucket(db, b1);
-	struct bucket *buck2 = __get_bucket(db, b2);
-
-	//	uint64_t bmax = ((1ull << db->hdr->blevel) - 1);
-	//fprintf(stderr, "-> %p %ld %ld\n", buck2, bmax, b2);
 
 	if(buck1->flags && __compare(db, buck1, search)) {
 		return buck1->dp;
-	} else if(buck2->flags && __compare(db, buck2, search)) {
+	}
+
+	size_t b2 = hash_djb2_64(search->data, search->size, lev);
+	struct bucket *buck2 = __get_bucket(db, b2);
+	
+	if(buck2->flags && __compare(db, buck2, search)) {
 		return buck2->dp;
 	}
+
 	return NULL;
 }
 
 static void *lookup(DB *db, DBT *search)
 {
 	void *ret;
-	for(unsigned int i=db->hdr->minlevel;i<=db->hdr->blevel;i++) {
-		if((ret=__lookup(db, search, i))) return ret;
+	for(unsigned int i=db->hdr->blevel;i>=db->hdr->minlevel;i--) {
+		if((ret = __lookup(db, search, i))) return ret;
 	}
 	return NULL;
 }
@@ -255,6 +342,7 @@ static void insert(DB *db, struct dbitem *__key, struct dbitem *__item)
 	db->hdr->count++;
 	if(db->hdr->count * 4 >= (1ul << db->hdr->blevel)) {
 r:
+		//fprintf(stderr, "EXPAND load = %f\n", (float)db->hdr->count / (1ul << db->hdr->blevel));
 		db->hdr->blevel++;
 		uint64_t bmax = ((1ull << db->hdr->blevel) - 1);
 		grow_database(db, ptr_translate(db, TYPE_META, (void *)(bmax * sizeof(struct bucket) + PAGE_SIZE)));
@@ -306,6 +394,7 @@ static int _db_put(DB *db, DB_TXN *txnid, DBT *key, DBT *data, uint32_t flags)
 		return ENOTSUP;
 	}
 	if(txnid != NULL) return ENOTSUP;
+	
 	if(lookup(db, key)) return EEXIST;
 	struct dbitem *dbik = __loadin(db, key);
 	struct dbitem *dbid = __loadin(db, data);
