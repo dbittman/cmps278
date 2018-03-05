@@ -340,7 +340,7 @@ static void *lookup(DB *db, DBT *search)
 static void insert(DB *db, struct dbitem *__key, struct dbitem *__item)
 {
 	db->hdr->count++;
-	if(db->hdr->count * 4 >= (1ul << db->hdr->blevel)) {
+	if((float)db->hdr->count * 1.1 >= (1ul << db->hdr->blevel)) {
 r:
 		//fprintf(stderr, "EXPAND load = %f\n", (float)db->hdr->count / (1ul << db->hdr->blevel));
 		db->hdr->blevel++;

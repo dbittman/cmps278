@@ -65,6 +65,22 @@ void bench(DB *dbp)
 				ret == 0 ? "p" : "np", diff.tv_nsec + diff.tv_sec * 1000000000);
 	}
 
+	for(uint64_t i = 0;i<count;i++) {
+		DBT key, data;
+		memset(&key, 0, sizeof(key));
+		memset(&data, 0, sizeof(data));
+
+		uint64_t k = 1024;
+		key.data = &k;
+		key.size = sizeof(k);
+		clock_gettime(CLOCK_MONOTONIC, &start);
+		ret = dbp->get(dbp, NULL, &key, &data, 0);
+		clock_gettime(CLOCK_MONOTONIC, &end);
+		timespec_diff(&start, &end, &diff);
+		fprintf(stderr, "BENCH " _DB_LIB " get hot %ld\n",
+				diff.tv_nsec + diff.tv_sec * 1000000000);
+	}
+
 }
 
 int test(DB *dbp)
