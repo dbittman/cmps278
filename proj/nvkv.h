@@ -34,6 +34,8 @@ struct bucket {
 	uint64_t pad;
 } __packed;
 
+#define DB_NOOVERWRITE 1
+
 #define _NVKV_MAGIC 0x332994ab
 struct dbheader {
 	uint32_t magic;

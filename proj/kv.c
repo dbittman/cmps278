@@ -390,9 +390,6 @@ static struct dbitem *__loadin(DB *db, DBT *v)
 
 static int _db_put(DB *db, DB_TXN *txnid, DBT *key, DBT *data, uint32_t flags)
 {
-	if(flags != 0) {
-		return ENOTSUP;
-	}
 	if(txnid != NULL) return ENOTSUP;
 	
 	if(lookup(db, key)) return EEXIST;

@@ -8,11 +8,11 @@
 
 #if _USE_BDB
 #include <db.h>
-#define DATABASE "test.db"
+#define DATABASE "/tmp/test.db"
 #define _DB_LIB "bdb"
 #else
 #include "nvkv.h"
-#define DATABASE "test.nvdb"
+#define DATABASE "/tmp/test.nvdb"
 #define _DB_LIB "nvkv"
 #endif
 
@@ -44,7 +44,7 @@ void bench(DB *dbp)
 		data.size = sizeof(i);
 
 		clock_gettime(CLOCK_MONOTONIC, &start);
-		dbp->put(dbp, NULL, &key, &data, 0);
+		dbp->put(dbp, NULL, &key, &data, DB_NOOVERWRITE);
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		timespec_diff(&start, &end, &diff);
 		fprintf(stderr, "BENCH " _DB_LIB " put %ld\n", diff.tv_nsec + diff.tv_sec * 1000000000);
