@@ -3,4 +3,22 @@
 cuckoo:
 order of lookup REALLY matters: reverse order.
 
-todo: fix bugs in impl.
+
+
+
+cuckoo: each move goes from valid state to valid state with bounded
+ops. Worst case the recursive move doesn't complete: still valid.
+
+TXN may be too much overhead. instead, we can use persist-release. We do this
+with count, because if the count is off a bit, that's okay. The only time that
+happens is power fail, and we can recalculate the count after a fail if we need
+it to be perfect.
+
+
+
+Calc size of TXNs (# instruction, # of mem access). Also use Os to reduce just
+those functions.
+
+
+
+

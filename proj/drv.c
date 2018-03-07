@@ -152,6 +152,7 @@ int main()
 
 
 
+	test(dbp);
 	bench(dbp);
 	return 0;
 }

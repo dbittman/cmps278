@@ -10,6 +10,25 @@
 #include <time.h>
 #include <sys/time.h>
 
+#define HAVE_CLWB 0
+
+#if HAVE_CLWB
+#define PERSIST_RELEASE(x) \
+	__extension__({ __asm__ volatile("sfence; clwb %0; mfence;" :: "m"(x) : "memory"); })
+#else
+#define PERSIST_RELEASE(x) \
+	__extension__({ __asm__ volatile("sfence; clflush %0; mfence;" :: "m"(x) : "memory"); })
+#endif
+
+#define PERSIST_ACQUIRE(x) \
+	__extension__({ __asm__ volatile("mfence;" ::: "memory"); })
+
+#define TXN_COMMIT(x) \
+	__extension__({ __asm__ volatile("mfence;" ::: "memory"); for(volatile int i=0;i<(x);i++) for(volatile int j=0;j<50;j++); })
+
+#define TXN_BEGIN(x) \
+	__extension__({ __asm__ volatile("mfence;" ::: "memory"); })
+
 #define PAGE_SIZE 0x1000
 #define TYPE_DATA 1
 #define TYPE_META 0
@@ -93,11 +112,13 @@ static int _db_open(DB *db, DB_TXN *txnid, const char *file,
 	db->hdr = db->base;
 	db->size = st.st_size;
 	if(created) {
+		TXN_BEGIN();
 		db->hdr->type = type;
 		db->hdr->flags = 0;
 		db->hdr->magic = _NVKV_MAGIC;
 		db->hdr->blevel = 10;
 		db->hdr->minlevel = 10;
+		TXN_COMMIT(5);
 		uint64_t bmax = ((1ull << db->hdr->blevel) - 1);
 		grow_database(db, ptr_translate(db, TYPE_META, (void *)(bmax * sizeof(struct bucket) + PAGE_SIZE)));
 	} else if(db->hdr->magic != _NVKV_MAGIC) {
@@ -231,22 +252,35 @@ static void __do_insert(DB *db, size_t b, struct dbitem *key, struct dbitem *ite
 {
 	struct bucket *bucket = __get_bucket(db, b);
 	if(bucket->flags && bucket->kp) {
-		fprintf(stderr, "WHAT %ld: %p %lx\n", b, bucket->kp, bucket->flags);
+		//fprintf(stderr, "WHAT %ld: %p %lx\n", b, bucket->kp, bucket->flags);
 		abort();
 	}
+	TXN_BEGIN();
 	bucket->kp = key;
 	bucket->dp = item;
 	bucket->flags = fl;
+	TXN_COMMIT(3);
 }
 
-static int __move(DB *db, size_t b)
+static void __do_move(DB *db, struct bucket *dest, struct bucket *src, int fl)
 {
+	TXN_BEGIN();
+	dest->kp = src->kp;
+	dest->dp = src->dp;
+	dest->flags = fl;
+	src->flags = 0;
+	src->kp = NULL;
+	TXN_COMMIT(3);
+}
+
+static int __move(DB *db, size_t b, size_t orig, size_t count)
+{
+	if(count > 50) return 0;
 	uint64_t fl;
 	size_t partner;
 	struct bucket *bucket = __get_bucket(db, b);
-	struct bucket tmp = *bucket;
-	struct dbitem *key = ptr_translate(db, TYPE_DATA, tmp.kp);
-	if(tmp.flags == 2) {
+	struct dbitem *key = ptr_translate(db, TYPE_DATA, bucket->kp);
+	if(bucket->flags == 2) {
 		partner = hash_gr_64(key->data, key->len, db->hdr->blevel);
 		fl = 1;
 	} else {
@@ -254,25 +288,14 @@ static int __move(DB *db, size_t b)
 		fl = 2;
 	}
 	if(b == partner) return 0;
-	bucket->kp = NULL;
-	bucket->flags = 0;
+	if(orig == partner) return 0;
+	
 	struct bucket *partner_bucket = __get_bucket(db, partner);
 	if(partner_bucket->flags) {
-		__move(db, partner);
+		if(__move(db, partner, orig, count+1) == 0) return 0;
 	}
 
-	if(partner_bucket->flags && bucket->flags) {
-		abort();
-	}
-
-	if(partner_bucket->flags) {
-		__do_insert(db, b, tmp.kp, tmp.dp, fl);
-		return 0;
-	} else if(bucket->flags) {
-		__do_insert(db, partner, tmp.kp, tmp.dp, fl);
-		return 0;
-	}
-	__do_insert(db, partner, tmp.kp, tmp.dp, fl);
+	__do_move(db, partner_bucket, bucket, fl);
 	return 1;
 }
 
@@ -296,14 +319,14 @@ static int __insert(DB *db, struct dbitem *__key, struct dbitem *__item)
 	if(buck2->flags == 0) {
 		__do_insert(db, b2, __key, __item, 2);
 	} else if(buck1->flags == 1) {
-		if(__move(db, b1) == 0) goto a;
+		if(__move(db, b1, b1, 0) == 0) goto a;
 		__do_insert(db, b1, __key, __item, 1);
 	} else if(buck2->flags == 1) {
 a:
-		if(__move(db, b2) == 0) return 0;
+		if(__move(db, b2, b2, 0) == 0) return 0;
 		__do_insert(db, b2, __key, __item, 1);
 	} else {
-		if(__move(db, b1) == 0) return 0;
+		if(__move(db, b1, b1, 0) == 0) return 0;
 		__do_insert(db, b1, __key, __item, 1);
 	}
 	return 1;
@@ -339,7 +362,6 @@ static void *lookup(DB *db, DBT *search)
 
 static void insert(DB *db, struct dbitem *__key, struct dbitem *__item)
 {
-	db->hdr->count++;
 	if((float)db->hdr->count * 1.1 >= (1ul << db->hdr->blevel)) {
 r:
 		//fprintf(stderr, "EXPAND load = %f\n", (float)db->hdr->count / (1ul << db->hdr->blevel));
@@ -348,6 +370,8 @@ r:
 		grow_database(db, ptr_translate(db, TYPE_META, (void *)(bmax * sizeof(struct bucket) + PAGE_SIZE)));
 	}
 	if(__insert(db, __key, __item) == 0) goto r;
+	db->hdr->count++;
+	PERSIST_RELEASE(db->hdr->count);
 }
 
 
@@ -376,15 +400,18 @@ static struct dbitem *__loadin(DB *db, DBT *v)
 {
 	size_t off = db->hdr->dataoff;
 	db->hdr->dataoff += ALIGNON(sizeof(struct dbitem) + v->size, 8);
+	PERSIST_RELEASE(db->hdr->dataoff);
 	grow_database(db, ptr_translate(db, TYPE_DATA, (void *)(db->hdr->dataoff)));
 
 	struct dbitem *item = ptr_translate(db, TYPE_DATA, (void *)db->hdr->dataoff);
-	item->len = v->size;
 	char *vd = v->data;
 	for(char *p = (char *)off;p < (char *)(off + v->size);p++) {
 		char *vp = ptr_translate(db, TYPE_DATA, p + offsetof(struct dbitem, data));
 		*vp = *vd++;
+		PERSIST_RELEASE(vp);
 	}
+	item->len = v->size;
+	PERSIST_RELEASE(item->len);
 	return ptr_canon(db, TYPE_DATA, item);
 }
 
