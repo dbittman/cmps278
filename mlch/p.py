@@ -109,11 +109,14 @@ for i in range(0, len(yerr_nore)):
 plt.figure()
 old = plt.errorbar(x, y_old, yerr=yerr_old)
 new = plt.errorbar(x, y_new, yerr=yerr_new)
-nore = plt.errorbar(x, y_nore, yerr=yerr_nore)
+#nore = plt.errorbar(x, y_nore, yerr=yerr_nore)
 
-plt.legend([old, new, nore], ['Old', 'New', 'Old (not counting rehash)'])
+#plt.legend([old, new, nore], ['Old', 'New', 'Old (not counting rehash)'])
+plt.legend([old, new], ['Reinsert during rehash', 'Increase size only'])
 
-plt.title("Simplest errorbars, 0.2 in x, 0.4 in y")
+plt.title("Cuckoo hashing movements")
+plt.ylabel("Number of Moves")
+plt.xlabel("Number of Elements Inserted")
 
 #ax.set_yscale('log')
 # Here we have to be careful to keep all y values positive:
@@ -126,5 +129,7 @@ plt.title("Simplest errorbars, 0.2 in x, 0.4 in y")
 
 #fig.suptitle('Variable errorbars')
 
-plt.show()
+plt.savefig("../paper/fig/moves.pdf")
+
+#plt.show()
 

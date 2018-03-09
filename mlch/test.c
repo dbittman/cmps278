@@ -43,11 +43,20 @@ static void __do_insert(size_t b, uint64_t key, void *item, int fl)
 	buckets[b].flags = fl;
 }
 
-static int __move(size_t b)
+static void __do_move(struct bucket *dest, struct bucket *src, int fl)
 {
+	dest->key = src->key;
+	dest->item = src->item;
+	dest->flags = fl;
+	src->flags = 0;
+	src->key = 0;
+}
+
+static int __move(size_t b, size_t orig, size_t count)
+{
+	if(count > 50) return 0;
 	uint64_t fl;
 	size_t partner;
-	struct bucket tmp = buckets[b];
 	if(buckets[b].flags == 2) {
 		partner = hash_gr_64(buckets[b].key, level);
 		fl = 1;
@@ -55,19 +64,14 @@ static int __move(size_t b)
 		partner = hash_djb2_64(buckets[b].key, level);
 		fl = 2;
 	}
-	//fprintf(stderr, "move: %ld %ld %ld %ld %ld %ld\n", b, buckets[b].flags, partner, buckets[b].key, buckets[partner].key, buckets[partner].flags);
-	buckets[b].key = 0;
-	buckets[b].flags = 0;
-	//fprintf(stderr, "move: %ld: %ld, %ld\n", b, partner, buckets[partner].key);
+	if(b == partner) return 0;
+	if(orig == partner) return 0;
+
 	if(buckets[partner].flags) {
-		__move(partner);
+		if(__move(partner, orig, count+1) == 0) return 0;
 	}
-	//fprintf(stderr, "    : %ld: %ld, %ld\n", b, partner, buckets[partner].key);
-	if(buckets[partner].flags != 0)
-		return 0;
-	assert(buckets[partner].flags == 0);
+	__do_move(&buckets[partner], &buckets[b], fl);
 	moves++;
-	__do_insert(partner, tmp.key, tmp.item, fl);
 	return 1;
 }
 
@@ -83,14 +87,14 @@ static int __insert(uint64_t key, void *item)
 	} else if(buckets[b2].flags == 0) {
 		__do_insert(b2, key, item, 2);
 	} else if(buckets[b1].flags == 1) {
-		if(__move(b1) == 0) goto a;
+		if(__move(b1, b1, 0) == 0) goto a;
 		__do_insert(b1, key, item, 1);
 	} else if(buckets[b2].flags == 1) {
 a:
-		if(__move(b2) == 0) return 0;
+		if(__move(b2, b2, 0) == 0) return 0;
 		__do_insert(b2, key, item, 1);
 	} else {
-		if(__move(b1) == 0) return 0;
+		if(__move(b1, b1, 0) == 0) return 0;
 		__do_insert(b1, key, item, 1);
 	}
 	return 1;
@@ -145,7 +149,7 @@ static long lookups = 0;
 static void *lookup_w(uint64_t key)
 {
 	void *ret;
-	for(int i=minlevel;i<=level;i++) {
+	for(int i=level;i>=level;i--) {
 		lookups++;
 		if((ret=__lookup(key, i))) return ret;
 	}
@@ -180,7 +184,9 @@ static void *lookup(uint64_t key)
 static void insert(uint64_t key, void *item)
 {
 	count++;
-	if(lookup(key)) return;
+	if(lookup(key)) {
+		return;
+	}
 	if(count * 4 >= sz) {
 r:
 		rehash(level+1);
