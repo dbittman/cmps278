@@ -30,8 +30,17 @@ void timespec_diff(struct timespec *start, struct timespec *stop,
 
 void bench(DB *dbp)
 {
-	int ret;
 	struct timespec start, end, diff;
+	for(uint64_t i = 0;i<1000000;i++) {
+		clock_gettime(CLOCK_MONOTONIC, &start);
+		volatile int j=0;
+		clock_gettime(CLOCK_MONOTONIC, &end);
+		timespec_diff(&start, &end, &diff);
+		fprintf(stderr, "CALIBRATE %ld\n", diff.tv_nsec + diff.tv_sec * 1000000000);
+	}
+
+
+	int ret;
 	uint64_t count = 1000000;
 	for(uint64_t i = 0;i<count;i++) {
 		DBT key, data;
@@ -152,7 +161,7 @@ int main()
 
 
 
-	test(dbp);
+	//test(dbp);
 	bench(dbp);
 	return 0;
 }

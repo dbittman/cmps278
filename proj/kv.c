@@ -10,6 +10,12 @@
 #include <time.h>
 #include <sys/time.h>
 
+
+#define DOPERSIST 1
+
+#if DOPERSIST
+
+
 #define HAVE_CLWB 0
 
 #if HAVE_CLWB
@@ -28,6 +34,19 @@
 
 #define TXN_BEGIN(x) \
 	__extension__({ __asm__ volatile("mfence;" ::: "memory"); })
+
+#else
+
+#define PERSIST_RELEASE(x) 
+
+#define PERSIST_ACQUIRE(x) 
+
+#define TXN_COMMIT(x) 
+
+#define TXN_BEGIN(x) 
+
+
+#endif
 
 #define PAGE_SIZE 0x1000
 #define TYPE_DATA 1
@@ -259,7 +278,7 @@ static void __do_insert(DB *db, size_t b, struct dbitem *key, struct dbitem *ite
 	bucket->kp = key;
 	bucket->dp = item;
 	bucket->flags = fl;
-	TXN_COMMIT(3);
+	TXN_COMMIT(1);
 }
 
 static void __do_move(DB *db, struct bucket *dest, struct bucket *src, int fl)
@@ -270,7 +289,7 @@ static void __do_move(DB *db, struct bucket *dest, struct bucket *src, int fl)
 	dest->flags = fl;
 	src->flags = 0;
 	src->kp = NULL;
-	TXN_COMMIT(3);
+	TXN_COMMIT(2);
 }
 
 static int __move(DB *db, size_t b, size_t orig, size_t count)
@@ -408,7 +427,6 @@ static struct dbitem *__loadin(DB *db, DBT *v)
 	for(char *p = (char *)off;p < (char *)(off + v->size);p++) {
 		char *vp = ptr_translate(db, TYPE_DATA, p + offsetof(struct dbitem, data));
 		*vp = *vd++;
-		PERSIST_RELEASE(vp);
 	}
 	item->len = v->size;
 	PERSIST_RELEASE(item->len);
