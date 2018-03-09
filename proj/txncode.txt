@@ -1,0 +1,58 @@
+do_move
+#i: 5, #m: 5
+f16:       0f ae f0                mfence 
+     f19:       c5 fa 6f 03             vmovdqu (%rbx),%xmm0
+     f1d:       4d 89 4c 24 10          mov    %r9,0x10(%r12)
+     f22:       c4 c1 78 11 04 24       vmovups %xmm0,(%r12)
+     f28:       48 c7 43 10 00 00 00    movq   $0x0,0x10(%rbx)
+     f2f:       00 
+     f30:       48 c7 03 00 00 00 00    movq   $0x0,(%rbx)
+     f37:       0f ae f0                mfence 
+
+
+
+
+#i: 4, #m: 4
+_do_insert
+    1ef0:       0f ae f0                mfence 
+    1ef3:       48 8b 7d 98             mov    -0x68(%rbp),%rdi
+    1ef7:       4c 89 28                mov    %r13,(%rax)
+    1efa:       48 c7 40 10 01 00 00    movq   $0x1,0x10(%rax)
+    1f01:       00 
+    1f02:       48 89 78 08             mov    %rdi,0x8(%rax)
+    1f06:       0f ae f0                mfence
+
+
+
+
+Os
+
+
+Same # of ins, shorter code length.
+#i: 4, #m: 3
+__do_insert
+     e6a:       0f ae f0                mfence 
+     e6d:       4d 63 c0                movslq %r8d,%r8
+     e70:       48 89 16                mov    %rdx,(%rsi)
+     e73:       48 89 4e 08             mov    %rcx,0x8(%rsi)
+     e77:       4c 89 46 10             mov    %r8,0x10(%rsi)
+     e7b:       0f ae f0                mfence
+
+
+
+longer code, more instructions, fewer instances of code.
+#i: 8, #m: 7
+do_move
+	      ebc:       0f ae f0                mfence 
+     ebf:       48 8b 06                mov    (%rsi),%rax
+     ec2:       48 63 d2                movslq %edx,%rdx
+     ec5:       48 89 07                mov    %rax,(%rdi)
+     ec8:       48 8b 46 08             mov    0x8(%rsi),%rax
+     ecc:       48 89 57 10             mov    %rdx,0x10(%rdi)
+     ed0:       48 89 47 08             mov    %rax,0x8(%rdi)
+     ed4:       48 c7 46 10 00 00 00    movq   $0x0,0x10(%rsi)
+     edb:       00 
+     edc:       48 c7 06 00 00 00 00    movq   $0x0,(%rsi)
+     ee3:       0f ae f0                mfence
+
+

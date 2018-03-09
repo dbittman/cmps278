@@ -267,6 +267,9 @@ static uint64_t hash_djb2_64(const void *d, size_t len, int bits)
 #define USED 1
 #define SECOND 2
 
+#pragma GCC push_options
+#pragma GCC optimize("Os")
+
 static void __do_insert(DB *db, size_t b, struct dbitem *key, struct dbitem *item, int fl)
 {
 	struct bucket *bucket = __get_bucket(db, b);
@@ -291,6 +294,8 @@ static void __do_move(DB *db, struct bucket *dest, struct bucket *src, int fl)
 	src->kp = NULL;
 	TXN_COMMIT(2);
 }
+
+#pragma GCC pop_options
 
 static int __move(DB *db, size_t b, size_t orig, size_t count)
 {
