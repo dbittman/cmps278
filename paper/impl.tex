@@ -16,9 +16,54 @@ it to be perfect.
 
 
 
-Calc size of TXNs (# instruction, # of mem access). Also use Os to reduce just
+Calc size of TXNs (num instruction, num of mem access). Also use Os to reduce just
 those functions.
 
+
+
+\begin{lstlisting}[caption={Transaction code, do\_move, optimized for speed.
+Five instructions, five memory accesses (four writes).},label=lst:moveO3]
+     vmovdqu (%rbx), %xmm0
+     mov     %r9, 0x10(%r12)
+     vmovups %xmm0, (%r12)
+     movq    $0x0, 0x10(%rbx)
+     movq    $0x0, (%rbx)
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Transaction code, do\_insert, optimized for speed.
+Four instructions, four memory accesses (three writes).},label=lst:insertO3]
+    mov    -0x68(%rbp),%rdi
+    mov    %r13,(%rax)
+    movq   $0x1,0x10(%rax)
+    mov    %rdi,0x8(%rax)
+\end{lstlisting}
+
+
+
+
+
+
+
+
+\begin{lstlisting}[caption={Transaction code, do\_move, optimized for size.
+Eight instructions, seven memory accesses (five writes).},label=lst:moveOs]
+     mov    (%rsi),%rax
+     movslq %edx,%rdx
+     mov    %rax,(%rdi)
+     mov    0x8(%rsi),%rax
+     mov    %rdx,0x10(%rdi)
+     mov    %rax,0x8(%rdi)
+     movq   $0x0,0x10(%rsi)
+     movq   $0x0,(%rsi)
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Transaction code, do\_insert, optimized for size.
+Four instructions, three memory accesses (three writes).},label=lst:insertOs]
+     movslq %r8d,%r8
+     mov    %rdx,(%rsi)
+     mov    %rcx,0x8(%rsi)
+     mov    %r8,0x10(%rsi)
+\end{lstlisting}
 
 
 
