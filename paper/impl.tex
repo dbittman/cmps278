@@ -20,9 +20,48 @@ Calc size of TXNs (num instruction, num of mem access). Also use Os to reduce ju
 those functions.
 
 
+TXN, PERSIST\_RELEASE
+
+\subsection{Generated Transaction Code}
+
+As discussed previously, one of the design goals was to reduce the size of
+transactions as much as possible. The implementation of \texttt{put} was
+designed with this in mind, and is split into two parts: data recording and
+indexing. In the data recording phase, the data contained in the key and value
+\texttt{DBT}s are saved into NVM. This is currently implemented as an arena-like
+allocator that copies each \texttt{DBT} into the database. The data recording
+phase does not require transactions since each write maintains correctness; thus
+the data recording phase uses only \texttt{persist-release} operations. The
+indexing phase, however, uses transactions when updating the hash table.
+
+The design of the cuckoo hash table combined with the choice to not move data
+when rehashing means that the hash table uses only two transaction blocks for
+\texttt{put}:
+\begin{enumerate}
+\item \texttt{do\_move}: Copy one bucket to another and zero the source bucket.
+\item \texttt{do\_insert}: Write a new key and value pointer into a bucket.
+\end{enumerate}
+%TODO: make sure we motivate this earlier
+Each of these transaction blocks is implemented as a separate function so I
+could experiment with the results of using \texttt{-Os} to optimize the blocks
+for size rather than speed---an important potential optimization for
+transactions that are limited in size or do not scale well with the number of
+memory references.
+
+Listings~\ref{lst:moveO3} and~\ref{lst:insertO3} show the generated code for
+\texttt{do\_move} and \texttt{do\_insert} respectively when using gcc 7.3.0 on
+an Intel x86\_64 processor with native code generation. The result is very
+compact, with only the required instructions inside the transaction blocks.
+Importantly, for move, the number of memory references is the minimum required to
+accomplish the goal of the transaction. However, for insert, the generated code
+contains a false dependency: the first line (\texttt{mov -0x68(\%rbp),\%rdi})
+does a memory read that does not \textit{need} to be in the transaction block.
+Compiler or language support would be required to fully optimize transactions
+like this.
+
 
 \begin{lstlisting}[caption={Transaction code, do\_move, optimized for speed.
-Five instructions, five memory accesses (four writes).},label=lst:moveO3]
+Five instructions, five memory accesses (four writes).},label={lst:moveO3}]
      vmovdqu (%rbx), %xmm0
      mov     %r9, 0x10(%r12)
      vmovups %xmm0, (%r12)
@@ -37,10 +76,30 @@ Four instructions, four memory accesses (three writes).},label=lst:insertO3]
     movq   $0x1,0x10(%rax)
     mov    %rdi,0x8(%rax)
 \end{lstlisting}
+%$
 
 
-
-
+After applying size optimizations, as shown in Listings~\ref{lst:moveOs}
+and~\ref{lst:insertOs}, the insert block is smaller with fewer memory
+references. In fact, it no longer contains the false dependency, and contains
+the minimum number of memory accesses, but it does have
+an extra instruction which again does not \textit{need} to be in the block, thus
+further motivating language support. The move operation, however, has
+\textit{increased} in size dramatically, containing two instructions which need
+not be in the transaction block. However, some of the additional instructions
+and memory references come from the fact that gcc chose not to use vector
+operations to do the copy in this case, relying instead on simple \texttt{mov}s.
+I do not know why this is the case, although I speculate that the reason gcc
+chose to do these optimizations was to reduce the number of times these code
+blocks appeared in the generated assembly. Whereas the speed-optimized versions
+appeared in numerous places throughout the code, the size-optimzed ones were
+condensed into one location to reduce size, and therefore gcc was unable to
+prove that the \texttt{xmm} registers were available for use. While the result
+appears to have more memory references, the two blocks, size and speed optimzed,
+touch exactly the same amount of memory (as expected, since they do the same thing).
+The important point is that optimizing for size on gcc does not necessarily
+optimize for the size of individual blocks of code because the compiler tries to
+reduce the size of the program as a whole.
 
 
 
