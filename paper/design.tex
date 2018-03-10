@@ -30,21 +30,27 @@ O2/3.
 \centering
 \hspace*{-0.3in}
 \includegraphics[width=88mm]{fig/addrspace}
-\caption{Stuff.}
+\caption{Mapping the data and metadata address spaces to the physical address
+space of the database file.}
 \label{fig:addrspace}
 \end{figure}
 
 \begin{figure}
 \centering
 \includegraphics[width=70mm,height=50mm]{fig/cuckoo_insert}
-\caption{Stuff.}
+\caption{Inserting an element that requires moving an existing element to a
+partner bucket.}
 \label{fig:insert}
 \end{figure}
 
 \begin{figure}
 \centering
+\hspace*{1mm}
 \includegraphics[width=100mm]{fig/cuckoo_rehash}
-\caption{Stuff.}
+\caption{Extending the hash table to level $n$ without reinserting existing
+elements. Level $n-1$ has existing elements that are not moved during the
+expansion, and the newly inserted element is more than twice as likely to find
+an empty bucket to insert into.}
 \label{fig:rehash}
 \end{figure}
 
