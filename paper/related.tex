@@ -1,2 +1,65 @@
 \section{Related Work}
 
+\paragraph{NVM Systems}
+
+There has been a lot of recent work on providing clean and safe abstractions for
+non-volatile memory, including data
+structures~\cite{coburn:asplos11,hu:atc17,Yang:2015,Venkataraman:2011} and programming
+models~\cite{ren:micro15,volos:asplos11,condit:sosp09,guerra:atc12,Narayanan:2012}.
+Most of these provide a lower-level interface for applications
+to be built atop non-volatile memory and focus on consistency and durability. In contrast, this work does not provide
+applications with direct access and control over NVM data structures; instead,
+it provides a key-value interface for applications.
+
+More projects focus on building scalable storage arrays with block-based
+non-volatile memory~\cite{Marmol:2014,caulfield:micro10,lim:sosp11,wu:atc15,debnath:vldb10}. We are focusing
+on byte-addressable non-volatile memory on the memory bus. Other projects focus
+on building full file systems for non-volatile
+memory~\cite{wu:asplos94,xu:fast16,xu:sosp17,dulloor:eurosys14}, which is orthogonal to this work because file
+systems fullfill different goals than key-value stores.
+
+\paragraph{Hashing As an NVM Indexing Structure}
+
+Many have studied the resurgence of hashing has a non-volatile-storage-based
+indexing structure in non-volatile memory due to the random-access,
+non-block-oriented nature of the storage technologies. Debnath \etal discuss
+improving hash tables for BNVM via several techniques that primarily reduce the
+cascading writes effects of cuckoo hashing while maintaining low cache
+pressure~\cite{Debnath:2016ht}.
+However, they do not focus on making each operation on the table transactionally
+consistent nor on reducing the size of the operations which must be protected.
+In contrast, while the hash table design in this work could be improved with
+some of the same techniques to reduce cascading writes, it focuses on making
+each sub-operation serializable and composing them to never leave the table in
+an inconsistent state.
+
+\paragraph{Cuckoo Hashing}
+
+There are many improvements to the base cuckoo hashing
+algorithm~\cite{Pagh:2004} that can be made, including improving
+concurrency~\cite{Li:2014ch}, generalizing cuckoo hashing to d-way
+hashing~\cite{Fotakis:hashing}, and cuckoo hashing with CLOCK-style
+eviction~\cite{Fan:2013}. These improvements, among the vast numbers of existing
+improvments to cuckoo hashing, are not orthogonal to this work, and many could
+be used in conjunction with the optimizations and designs presented here.
+
+\paragraph{KV Stores and DBMSs}
+
+There have been numerous projects looking at building key-value stores or
+database management systems for non-volatile memories. For example, Arulraj
+\etal discuss the implications of BNVM for a DBMS~\cite{Arulraj:2017}. While
+many of the lessons there are relevant for key-value stores, many of the design
+requirements and implementation details are due to the additional requirements
+of a DBMS over a key value store, and they do not take into account
+transactional memory limitations.
+
+
+Echo is another key-value store designed for non-volatile main
+memories~\cite{echo}, however it is also designed with DRAM caching and an
+explicit commit operation in mind. In constrast, NVKV persists automatically on
+every operations without an interposition of DRAM. A similar problem can be
+found in Write-behind logging~\cite{Arulraj:2016wbl}, which uses a novel approach to do logging on
+transactions in non-volatile memory. It similarly limits itself to copying
+between DRAM and BNVM, as does NVMcached~\cite{Wu:2016}, which also does not
+take transactional memory into account.
+
