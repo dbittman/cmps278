@@ -1,1 +1,82 @@
 \section{Background}
+
+Non-volatile memory technologies, including phase change memory
+(PCM)~\cite{lee_architecting_2009,wong2010phase}, Ferroelectric RAM
+(FeRAM)~\cite{fox:2001feram}, and spin-torque transfer RAM (STT-RAM)~\cite{sttram},
+among others, promise to fundamentally change the design of our
+devices, operating systems, and applications. Although the technologies are
+starting to make their way into consumer devices~\cite{intel3dxpoint}, their
+full potential will be seen when they replace or exist alongside DRAM on the
+memory bus (as byte-addressable non-volatile memory, BNVM).
+Such a memory hierarchy will allow the processor, and therefore
+applications, to access persistent storage with normal load and store
+instructions, bypassing the high-latency I/O operations of the operating system.
+
+The advent of these technologies means that we must build new applications
+explicitly designed for them. Whereas existing key-value stores would work when
+given access to a file in a file system on BNVM, the result would be sub-optimal
+because it would still have the operating system interposing on access to
+persistent storage, which is unnecessary for BNVM. Furthermore, the access would
+be block oriented, which is irrelevant for these technologies. Finally, the
+consistency mechanisms enforced by file systems would be overkill compared to
+the more light-weight consistency that could be achieved by a key-value store
+designed for BNVM. Together, these all act as additional overhead for key-value
+stores that could be avoided by properly redesigning and reevaluating the needs
+of such a system. That is a goal of NVKV; understanding the underlying
+technology and designing for it.
+
+While this is not new, the particular system model NVKV is built for is. We are
+entering an era where we may see a range of persistent memory on the memory bus
+from no persistent memory to \textit{only} persistent memory. While some exising
+key-value stores are built for persistent memory, they often assume the
+existence of DRAM~\cite{echo,Arulraj:2016wbl}. However, IoT devices may soon see
+their use of DRAM diminish as more power-friendly technologies come
+out~\cite{Jayakumar2014powering}. In fact, from a survey on
+papers~\cite{dhiman_pdram:_2009,lee_architecting_2009,xiangyu_dong_nvsim:_2012,qureshi_scalable_2009,Chen_rethinkingdatabase,bedeschi_8mb_2004} discussing
+energy consumption of PCM and DRAM, we can see that the energy cost per bit to
+write to PCM is 50 times more expensive, but
+the idle cost of DRAM is a \textit{billion} times the write cost per bit. This
+means that the idle cost of DRAM can only be surpassed by PCM when writing a
+billion bits per second. While this is large, it is not unreachable---systems
+must be careful to avoid excessive copies and rewrites when using PCM, something 
+existing system do not always optimize for. Finally, since PCM is
+extremely energy efficient in read-mostly workloads, it will likely find its
+place in IoT device without DRAM. Thus, key-value stores must be designed for
+this all-BNVM model.
+
+\paragraph{Transactional Memory}
+
+Many BNVM systems focus on consistency of data structures in due to the
+persistent nature of BNVM. When applications store persistent data in
+persistent memory, they expect the data to remain consistent with respect to a
+set of invariants (e.g. a linked list is valid, etc). However, with the fine
+granularity of writes to BNVM and the ability for power failures to strike at
+any time, ensuring consistency on BNVM is an important challenge that must be
+addressed in new ways.
+
+There are many ways to provide applications with methods for ensuring
+consistency, ranging from persisting during shutdown with
+battery-backups~\cite{narayanan:asplos12} to write-through caching and careful
+ordering with atomics~\cite{bhandari2012implications}, to explicit flushing and
+fencing~\cite{condit:sosp09}. While these mechanisms are usable, they range from
+being non-portable to being incredibly inefficient. Only explicit flushing is
+close to reasonable in terms of both usability and performance, but it has the
+same problems as atomic memory accesses without programming language support.
+Only with proper language support can persistent memory be both high performance
+and easily usable.
+
+The exact form of this language support is still debated, partly because it will
+depend on the type of hardware support we see for persistent memory programming.
+Hardware support could range from persist barriers to support for transactional
+memory. However, existing hardware transactional memory (e.g. in Intel
+processors) is deprecated due to bugs. Instead, we are left with enough support
+for software transactional memory, which has similar problems as other
+approches, namely performance and usability~\cite{stm}. However, hardware
+transactional memory \textit{could} be a
+reality~\cite{kolli:asplos16,lu:tos16,wang:cal15}---a reality this paper
+assumes. Thus, we are focusing on developing a key-value store built for BNVM
+with hardware (or software) transactional memory support to ensure consistency.
+As an optimization, we additionally make use of weaker consistency mechanisms,
+such as fencing and flushing, when transactions would be too heavy-weight for
+the updates we are protecting.
+
