@@ -1,14 +1,51 @@
 \section{Future Work}
 
+Future work can be broken down into three broad categories:
+\begin{enumerate}
+\item \textbf{Expanding}: The functionality of NVKV is extremely limited right
+now. There are two major features that are missing that would both be
+challenging to implement, but also extremely good candidates for research:
+concurrency and larger transactions.
 
+NVKV is currently single-threaded and does not support concurrent operations.
+Doing so would be somewhat challenging, since most persistency-safe
+transactional memory models do not take concurrent operations into account. The
+simple solution is to use locks, resetting them should the power fail. However,
+this can limit the multithreaded performance of the application. It would be
+interesting to investigate of more fine-grained concurrency would be possible
+while remaining consistent across power failures.
 
-Defining a persists-with relationship.
-One place it would be good would be the data load-in area... where we could have
-the data persist-with the item size, which would be more efficient than
-releasing a word at a time.
+Next, NVKV uses transactional memory to ensure its consistency, but it does not
+provide support for multi-operation transactions like \bdb does. While support
+for such transactions could be implemented in a similar manner, it would be
+interesting to determine the most viable way to implement multi-operation
+transactions.
 
+\item \textbf{Optimizing}: A significant performance loss for insert is in the
+data copy-in phase. Each written word of the data is separately persisted before
+the next one is written. If there was language support for a
+\textit{persists-with} relationship\footnote{This was my class project in
+Programming Languages---defining the math for this to work. It is possible and
+can be well defined.} where you could specify that if a particular write $x$
+is persisted, then a set of writes $w_0, w_1, ..., w_n$ must also be persisted.
+This effectively enforces a visible ordering on persistent writes. It can be
+implemented with much higher efficiency than explicit cache-line flushing, and
+would significantly improve the data copy-in phase.
 
-Optimize levels on load / unload (so we don't have to search them all).
+Another optimization would be for lookup. If each value were tagged with the
+``level'' of the hash table that it was locatable by, and this tag were updated
+each time it moved, then the fsck tool could also optimize by calculating the
+lowest level required for lookup to check before declaring the item not present.
+Alternatively, the fsck tool (which is allowed to optimize the database) could
+do the reinsert of each item in the table, as long as it first made a backup.
+
+\item \textbf{Exploring}: Finally, the Cuckoo hashing variant presented here has
+merit for further exploration and research. An obvious path would be to explore
+how other variants of Cuckoo hashing (which, for example, increase the load factor that
+the table can tolerate) can interoperate with the no-reinsertion while rehashing
+scheme. Finally, a more detailed analysis of this scheme should be done.
+
+\end{enumerate}
 
 \section{Conclusion}
 
