@@ -143,13 +143,14 @@ The indexing structure we are using is a hash table, exploiting the
 random-access and non-block-oriented nature of BNVM~\cite{Debnath:2016ht}. To
 deal with collisions, we have chosen Cuckoo hashing~\cite{Pagh:2004}, a hashing
 scheme that results in good cache locality, bounded lookups, and reasonably high
-load-factor. Each key is hashed to two buckets, $b_1 = H_1(k)$ and $b_2 =
-H_2(k)$, where $k$ is the key and $H_1$ and $H_2$ are two different hash
-functions. When inserting, bucket $b_1$ is evaluated, and if it is empty, the
-key is inserted there. If it is not empty, we look at $b_2$. If \textit{it} is
-empty, we can insert there. Otherwise, we must \textit{move} the contents of
-either $b_1$ or $b_2$ before we can insert. This process is shown in
-figure~\ref{fig:insert}, where $B$ must move for $A$ to be inserted.
+load-factor. Each key is hashed to two buckets, $b_1 = H_1(k) \mod l$ and $b_2 =
+H_2(k) \mod l$, where $k$ is the key, $l$ is the table length, and $H_1$ and
+$H_2$ are two different hash functions. When inserting, bucket $b_1$ is
+evaluated, and if it is empty, the key is inserted there. If it is not empty, we
+look at $b_2$. If \textit{it} is empty, we can insert there. Otherwise, we must
+\textit{move} the contents of either $b_1$ or $b_2$ before we can insert. This
+process is shown in figure~\ref{fig:insert}, where $B$ must move for $A$ to be
+inserted.
 
 \begin{figure}
 \centering
@@ -168,10 +169,42 @@ aborted and a rehash is triggered. When inserting, if both $b_1$ and $b_2$ are
 full, and neither can be moved, the hash table is rehashed---the length is
 doubled.
 
+Lookup is implemented by checking both $b_1$ and $b_2$ for the key. This is a
+strength of Cuckoo hashing, that lookup operations take a bounded, small number
+of steps while still supporting collision resolution.
+
 \paragraph{Rehashing}
 
+Rehashing is the most arduous part of dealing with hash tables, for it often
+involves a large pause and a significant amount of data movement. Reinserting
+all the keys into a double-length table is not viable for NVKV, because we are
+trying desperately to avoid excessive data movement and because it is difficult
+to define this in terms of a bounded transaction. A possible solution would be
+to pass off the reinsertions into future insert operations, but that can get
+complicated should a rehash be triggered a second time shortly thereafter.
+Furthermore, this increases the complexity of insert operations.
 
+Instead, NVKV takes the approach of just not reinserting the data. The table
+length is still doubled, causing new inserts to be distributed throughout the
+new table, but old data still remains clustered in the first half, untouched, as
+shown in figure~\ref{fig:rehash}.
+The lookup operation is modified to try looking up for each size the hash table
+has been; that is, it calculates $b_1 = H_1(k) \mod l$ (and $b_2$ similarly),
+followed by $b_1 = H_1(k) \mod \frac{l}{2}$, and so on, until it reaches the
+original size of the hash table. We are essentially treating the table as a set
+of tables, each twice the size of the previous, overlapping in memory.
 
+We always insert ``at the top level'', meaning that inserts and moves are always
+done with the current value of $l$ and no other. When a collision is found, it
+is moved to its partner bucket (calculated with $l$) even if it was originally
+there from a previous value of $l$. Although the data from a previous $l$ is
+clustered in the first half of the table ($l$ was just doubled; the second half
+is empty), it is unlikely to cause a large number of movements immediately
+because new inserts have equal likelihood to end up in the second half of the
+table. Next, when an old value must move, it has equal likelihood of being moved
+to the second half of the table, thereby eventually spreading the data out
+across the table. The advantage of this is no extra code complexity; the data is
+eventually spread through the normal operation of inserts and moves.
 
 
 \begin{figure}
@@ -185,16 +218,37 @@ an empty bucket to insert into.}
 \label{fig:rehash}
 \end{figure}
 
-
-
-
+The end result is a hash table that does not require expensive rehashing while
+providing bounded insert operations at the expense of slightly slower lookup
+operations. However, we found that although lookups have to try looking up
+assuming several different values of $l$, in practice the data was redistributed
+quite quickly, causing most insert operations to only lookup one level.
 
 
 \paragraph{Why Cuckoo?}
 
+Cuckoo hashing dove-tails nicely with the rehashing scheme. One of the reasons
+this scheme would not work with something like linear probing is that lookups in
+linear probing are not bounded. Looking up at each ``level'' (value of $l$) must
+be bounded and fast for the additional requirement to lookup at each level to be
+reasonable. Linear probing would end up searching a large number of buckets for
+each lookup, which is infeasible. Cuckoo hashing limits the bucket search at
+each level to two.
+Another advantage is that Cuckoo hashing already does data movement as part of
+its implementation, meaning that the clustered data after a rehash will be
+automatically spread out. 
 
 
-
+For BNVM and transactional memory, we must both limit the size of the
+sub-operations and make each one leave the index in a consistent state. Movement
+in Cuckoo hashing achieves both goals; each movement requires only a small
+number of memory operations onces the system decides to move a bucket somewhere,
+and each one remains consistent. If a key were to move from $b_1$ to $b_2$, it
+will still be locatable because it \textit{could have} been in $b_2$ all along.
+The lookup will still find it. This properly allows the recursive move function
+to move data in these sub-operations, always with the index consistent. Even if
+the recursion gets interrupted part-way through and power is lost, the database
+will remain valid.
 
 
 
