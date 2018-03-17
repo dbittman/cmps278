@@ -12,10 +12,11 @@ Doing so would be somewhat challenging, since most persistency-safe
 transactional memory models do not take concurrent operations into account. The
 simple solution is to use locks, resetting them should the power fail. However,
 this can limit the multithreaded performance of the application. It would be
-interesting to investigate of more fine-grained concurrency would be possible
+interesting to investigate how more fine-grained concurrency would be possible
 while remaining consistent across power failures.
 
-Next, NVKV uses transactional memory to ensure its consistency, but it does not
+Next, NVKV uses transactional memory to ensure its consistency with each
+operation, but it does not
 provide support for multi-operation transactions like \bdb does. While support
 for such transactions could be implemented in a similar manner, it would be
 interesting to determine the most viable way to implement multi-operation
@@ -23,11 +24,13 @@ transactions.
 
 \item \textbf{Optimizing}: A significant performance loss for insert is in the
 data copy-in phase. Each written word of the data is separately persisted before
-the next one is written. If there was language support for a
+the next one is written. Language support for a
 \textit{persists-with} relationship\footnote{This was my class project in
 Programming Languages---defining the math for this to work. It is possible and
 can be well defined.} where you could specify that if a particular write $x$
-is persisted, then a set of writes $w_0, w_1, ..., w_n$ must also be persisted.
+is persisted, then a set of writes $w_0, w_1, ..., w_n$ must also be
+persisted, would allow a set of optimizations and improvements that are
+extremely easy to use compared to explicit flushing.
 This effectively enforces a visible ordering on persistent writes. It can be
 implemented with much higher efficiency than explicit cache-line flushing, and
 would significantly improve the data copy-in phase.

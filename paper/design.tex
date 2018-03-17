@@ -10,8 +10,8 @@ The design goals of NVKV are five-fold:
 	\item \textbf{Consistency with Operations}: Once each operation returns to
 		the application, any changes required by the operation must be
 		persistent. For example, after the insert function returns, the new data
-		and the updated information in the index must be persisted to BNVM such
-		that if power failed at that point, the insert operation would be safe.
+		and the updated information in the index must be persisted to BNVM and
+		be visible to the applications when it looks for it.
 	\item \textbf{Consistency with Power Failures}: NVKV must support power
 		failures at \textit{any} point during \textit{any} operation. When power
 		is resumed, and the application restarted, it should be able to continue
@@ -22,7 +22,7 @@ The design goals of NVKV are five-fold:
 		match as expected.
 
 		If a power failure occurs in the middle of an insert, there is a
-		possibility that the insert only partially completely. That is fine, as
+		possibility that the insert only partially completed. That is fine, as
 		long as the above requirements are met. For example, the data might be
 		copied in before the index is updated. If the power fails here, the only
 		``inconsistency'' would be that there is a key-value pair that is not
@@ -31,7 +31,7 @@ The design goals of NVKV are five-fold:
 		database state is sub-optimal since it contains unnecessary data. For
 		these kinds up inconsistencies, we allow a fsck tool to be run to
 		measure reachability for all keys and values and ensure that the
-		database count is correct. Note that if the database was used without
+		database count is correct. Note that if the database were used without
 		running the fsck tool, it would work as expected; the fsck tool is just
 		there to optimize the database when power failures occur.
 	\item \textbf{Performance}: Like any good key-value store, NVKV aims to
@@ -48,7 +48,7 @@ each update to the database that is done by an operation like insert a series of
 small, consistent sub-operations. Each of these sub-operations moves the
 database from one valid state to another, possibly with the use of a transaction
 (which, to avoid confusion, in this document means ``a transaction using
-transactional memory on some memory``). The database is carefully designed to
+transactional memory on some memory''). The database is carefully designed to
 allow it to \textit{always} construct each operation out of a bounded number of
 sub-operations that keep the database in a consistent state. The second common
 theme is to avoid data movement as much as possible. While this is not always
@@ -80,12 +80,14 @@ exactly the same, although a lot of functionality is left unimplemented, as full
 compatibility is well outside the scope of a class project. The implemented
 functionality is \texttt{db\_create}, \texttt{db\_open}, \texttt{get},
 \texttt{put}, \texttt{sync}, \texttt{err}, \texttt{errx}, and manipulation of
-\texttt{DBT}s. The format of the database files is \textit{not} compatible; only
+\texttt{DBT}s\footnote{A \texttt{DBT} is a struct containing a pointer to memory
+and a length, and is used to pass keys and values between the database library
+and the application.}. The format of the database files is \textit{not} compatible; only
 the programming interface is.
 
 \subsection{Data Organization}
 
-The database file contains two separate types of data: data and metadata. Data
+The database file contains two separate types of information: data and metadata. Data
 refers to the contents of a \texttt{DBT} (keys and values) along with their
 lengths. The exact format of the data storage is discussed in
 section~\ref{sec:ds}. Metadata is the information kept by the database in order
@@ -107,20 +109,23 @@ store both metadata and data. However, both of these grow when inserting,
 meaning that if they were placed naively inside the database file, they might
 have to be moved. Moving large amounts of data is fine in a database system
 such as \bdb, but when operating directly on BNVM, we must avoid moving data
-when possible. Furthermore, moving data is much more difficult to do in a single
-transaction.
+whenever possible, both to save energy, and because moving data is much more
+difficult to do in a single transaction.
 
-To avoid moving data, NVKV lays out memory as shown in
+To avoid moving data, NVKV lays out the database file memory as shown in
 figure~\ref{fig:addrspace}, where each page of metadata is interlaced with each
 data page. Logically, this provides two separate, linear address spaces for data
-and metadata. Internal pointers are stored \textit{as if} these address spaces
+and metadata that can both grow without interfering with each other. Internal pointers are stored \textit{as if} these address spaces
 were real and started at zero; that is, if page-size is 4K and we wished to
 write a pointer to the second page of metadata, it would be \texttt{0x1000 +
 page-offset}, even though the actual location in the file this refers to is
-\texttt{0x2000 + page-offset}. When swizzling pointers into their virtual
+\texttt{0x2000 + page-offset}. Storing pointers in such a format is done because
+the database may not be mapped to the same location the next time it is loaded,
+so we must translate pointers into a universal format when storing them.
+When swizzling pointers into their virtual
 address space value after \texttt{mmap}ing the database, NVKV relies on context
 to choose the address space, apply the appropriate operation to determine the
-offset into the file, and then adds the base address of the \texttt{mmap}
+offset into the file, and then add the base address of the \texttt{mmap}
 region to calculate the ultimate virtual address.
 
 The need to deal with persistent pointers in virtual memory is a real problem,
@@ -165,13 +170,13 @@ To move $B$, we determine its partner bucket (the other bucket it hashes to),
 and try to move it there. If there is an item in the partner bucket, we
 recursively try to move until we are successful. Note that cycles are possible;
 should a cycle occur (or a threshold number of moves is reached), the move is
-aborted and a rehash is triggered. When inserting, if both $b_1$ and $b_2$ are
+aborted. When inserting, if both $b_1$ and $b_2$ are
 full, and neither can be moved, the hash table is rehashed---the length is
 doubled.
 
 Lookup is implemented by checking both $b_1$ and $b_2$ for the key. This is a
 strength of Cuckoo hashing, that lookup operations take a bounded, small number
-of steps while still supporting collision resolution.
+of steps while still supporting reasonably efficient collision resolution.
 
 \paragraph{Rehashing}
 
@@ -194,7 +199,7 @@ followed by $b_1 = H_1(k) \mod \frac{l}{2}$, and so on, until it reaches the
 original size of the hash table. We are essentially treating the table as a set
 of tables, each twice the size of the previous, overlapping in memory.
 
-We always insert ``at the top level'', meaning that inserts and moves are always
+Inserts are always done ``at the top level'', meaning that inserts and moves are always
 done with the current value of $l$ and no other. When a collision is found, it
 is moved to its partner bucket (calculated with $l$) even if it was originally
 there from a previous value of $l$. Although the data from a previous $l$ is
@@ -220,8 +225,8 @@ an empty bucket to insert into.}
 
 The end result is a hash table that does not require expensive rehashing while
 providing bounded insert operations at the expense of slightly slower lookup
-operations. However, we found that although lookups have to try looking up
-assuming several different values of $l$, in practice the data was redistributed
+operations. However, we found that although get operations have to try the hash
+table look up using several different values of $l$, in practice the data was redistributed
 quite quickly, causing most insert operations to only lookup one level.
 
 
@@ -232,18 +237,21 @@ this scheme would not work with something like linear probing is that lookups in
 linear probing are not bounded. Looking up at each ``level'' (value of $l$) must
 be bounded and fast for the additional requirement to lookup at each level to be
 reasonable. Linear probing would end up searching a large number of buckets for
-each lookup, which is infeasible. Cuckoo hashing limits the bucket search at
+each lookup, which is infeasible, whereas Cuckoo hashing limits the bucket search at
 each level to two.
 Another advantage is that Cuckoo hashing already does data movement as part of
 its implementation, meaning that the clustered data after a rehash will be
-automatically spread out. 
+automatically spread out. When designing a system using transactions and complex
+persistence requirements, reducing code complexity is a massive advantage.
 
 
 For BNVM and transactional memory, we must both limit the size of the
 sub-operations and make each one leave the index in a consistent state. Movement
 in Cuckoo hashing achieves both goals; each movement requires only a small
-number of memory operations onces the system decides to move a bucket somewhere,
-and each one remains consistent. If a key were to move from $b_1$ to $b_2$, it
+number of memory operations onces the system decides to move a bucket somewhere.
+The bucket movements also always move data to valid locations; they are never
+temporarily in places they cannot be found.
+If a key were to move from $b_1$ to $b_2$, it
 will still be locatable because it \textit{could have} been in $b_2$ all along.
 The lookup will still find it. This properly allows the recursive move function
 to move data in these sub-operations, always with the index consistent. Even if
@@ -269,10 +277,10 @@ the database never causes it to interfere with the metadata.
 To ensure persistence and consistency, the end pointer is not updated until
 after the data is copied in. After each word of data copied, the cache-line
 is flushed and a memory fence is applied, ensuring that the data be flushed back
-to BNVM. A potential optimization could be to only flush when crossing a
-cache-line boundary. The reason we do not use a transaction here is that the
+to BNVM.
+The reason we do not use a transaction here is that the
 data could be arbitrarily long. Once the data is copied, the end pointer is
-incremented and flushed. Again, a transaction is not needed here because we are
+incremented and flushed, again, without a transaction because we are
 only updating a single value.
 
 

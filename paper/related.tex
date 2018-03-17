@@ -1,6 +1,6 @@
 \section{Related Work}
 
-\paragraph{NVM Systems}
+\paragraph{BNVM Systems}
 
 There has been a lot of recent work on providing clean and safe abstractions for
 non-volatile memory, including data
@@ -8,7 +8,7 @@ structures~\cite{coburn:asplos11,hu:atc17,Yang:2015,Venkataraman:2011} and progr
 models~\cite{ren:micro15,volos:asplos11,condit:sosp09,guerra:atc12,Narayanan:2012}.
 Most of these provide a lower-level interface for applications
 to be built atop non-volatile memory and focus on consistency and durability. In contrast, this work does not provide
-applications with direct access and control over NVM data structures; instead,
+applications with direct access and control over BNVM data structures; instead,
 it provides a key-value interface for applications.
 
 More projects focus on building scalable storage arrays with block-based
@@ -18,10 +18,10 @@ on building full file systems for non-volatile
 memory~\cite{wu:asplos94,xu:fast16,xu:sosp17,dulloor:eurosys14}, which is orthogonal to this work because file
 systems fullfill different goals than key-value stores.
 
-\paragraph{Hashing As an NVM Indexing Structure}
+\paragraph{Hashing As an BNVM Indexing Structure}
 
 Many have studied the resurgence of hashing has a non-volatile-storage-based
-indexing structure in non-volatile memory due to the random-access,
+indexing structure due to the random-access,
 non-block-oriented nature of the storage technologies. Debnath \etal discuss
 improving hash tables for BNVM via several techniques that primarily reduce the
 cascading writes effects of cuckoo hashing while maintaining low cache
@@ -40,7 +40,7 @@ algorithm~\cite{Pagh:2004} that can be made, including improving
 concurrency~\cite{Li:2014ch}, generalizing cuckoo hashing to d-way
 hashing~\cite{Fotakis:hashing}, and cuckoo hashing with CLOCK-style
 eviction~\cite{Fan:2013}. These improvements, among the vast numbers of existing
-improvments to cuckoo hashing, are not orthogonal to this work, and many could
+improvements to cuckoo hashing, are not orthogonal to this work, and many could
 be used in conjunction with the optimizations and designs presented here.
 
 \paragraph{KV Stores and DBMSs}

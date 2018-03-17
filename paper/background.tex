@@ -39,14 +39,14 @@ the idle cost of DRAM is a \textit{billion} times the write cost per bit. This
 means that the idle cost of DRAM can only be surpassed by PCM when writing a
 billion bits per second. While this is large, it is not unreachable---systems
 must be careful to avoid excessive copies and rewrites when using PCM, something 
-existing system do not always optimize for. Finally, since PCM is
+existing systems do not always optimize for. Finally, since PCM is
 extremely energy efficient in read-mostly workloads, it will likely find its
-place in IoT device without DRAM. Thus, key-value stores must be designed for
+place in IoT devices without DRAM. Thus, key-value stores must be designed for
 this all-BNVM model.
 
 \paragraph{Transactional Memory}
 
-Many BNVM systems focus on consistency of data structures in due to the
+Many BNVM systems focus on consistency of data structures due to the
 persistent nature of BNVM. When applications store persistent data in
 persistent memory, they expect the data to remain consistent with respect to a
 set of invariants (e.g. a linked list is valid, etc). However, with the fine

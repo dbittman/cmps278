@@ -34,8 +34,8 @@ As discussed previously, one of the design goals was to reduce the size of
 transactions as much as possible. The implementation of \texttt{put} was
 designed with this in mind, and is split into two parts: data recording and
 indexing. In the data recording phase, the data contained in the key and value
-\texttt{DBT}s are saved into NVM. This is currently implemented as an arena-like
-allocator that copies each \texttt{DBT} into the database. The data recording
+\texttt{DBT}s are saved into BNVM.
+The data recording
 phase does not require transactions since each write maintains correctness; thus
 the data recording phase uses only \texttt{persist-release} operations. The
 indexing phase, however, uses transactions when updating the hash table.
@@ -50,7 +50,7 @@ when rehashing means that the hash table uses only two transaction blocks for
 %TODO: make sure we motivate this earlier
 Each of these transaction blocks is implemented as a separate function so I
 could experiment with the results of using \texttt{-Os} to optimize the blocks
-for size rather than speed---an important potential optimization for
+for size rather than speed, an important potential optimization for
 transactions that are limited in size or do not scale well with the number of
 memory references.
 
@@ -61,12 +61,13 @@ compact, with only the required instructions inside the transaction blocks.
 Importantly, for move, the number of memory references is the minimum required to
 accomplish the goal of the transaction. However, for insert, the generated code
 contains a false dependency: the first line (\texttt{mov -0x68(\%rbp),\%rdi})
-does a memory read that does not \textit{need} to be in the transaction block.
+does a memory read that does not \textit{need} to be in the transaction block,
+it could have been done before the transaction begins.
 Compiler or language support would be required to fully optimize transactions
 like this.
 
 
-\begin{lstlisting}[caption={Transaction code, do\_move, optimized for speed.
+\begin{lstlisting}[caption={Transaction code generations for do\_move, optimized for speed.
 Five instructions, five memory accesses (four writes).},label={lst:moveO3}]
      vmovdqu (%rbx), %xmm0
      mov     %r9, 0x10(%r12)
@@ -75,7 +76,7 @@ Five instructions, five memory accesses (four writes).},label={lst:moveO3}]
      movq    $0x0, (%rbx)
 \end{lstlisting}
 
-\begin{lstlisting}[caption={Transaction code, do\_insert, optimized for speed.
+\begin{lstlisting}[caption={Transaction code generation for do\_insert, optimized for speed.
 Four instructions, four memory accesses (three writes).},label=lst:insertO3]
     mov    -0x68(%rbp),%rdi
     mov    %r13,(%rax)
@@ -89,20 +90,22 @@ After applying size optimizations, as shown in Listings~\ref{lst:moveOs}
 and~\ref{lst:insertOs}, the insert block is smaller with fewer memory
 references. In fact, it no longer contains the false dependency, and contains
 the minimum number of memory accesses, but it does have
-an extra instruction which again does not \textit{need} to be in the block, thus
+an extra instruction (\texttt{movslq}) which again does not \textit{need} to be in the block, thus
 further motivating language support. The move operation, however, has
 \textit{increased} in size dramatically, containing two instructions which need
 not be in the transaction block. However, some of the additional instructions
 and memory references come from the fact that gcc chose not to use vector
 operations to do the copy in this case, relying instead on simple \texttt{mov}s.
-I do not know why this is the case, although I speculate that the reason gcc
+Why this is the case is unknown, although we speculate that the reason gcc
 chose to do these optimizations was to reduce the number of times these code
 blocks appeared in the generated assembly. Whereas the speed-optimized versions
 appeared in numerous places throughout the code, the size-optimzed ones were
 condensed into one location to reduce size, and therefore gcc was unable to
 prove that the \texttt{xmm} registers were available for use. While the result
 appears to have more memory references, the two blocks, size and speed optimzed,
-touch exactly the same amount of memory (as expected, since they do the same thing).
+touch exactly the same amount of memory\footnote{The \texttt{xmm} registers
+access larger amounts of memory because they are vector registers.}
+(as expected, since they do the same thing).
 The important point is that optimizing for size on gcc does not necessarily
 optimize for the size of individual blocks of code because the compiler tries to
 reduce the size of the program as a whole.
@@ -110,7 +113,7 @@ reduce the size of the program as a whole.
 
 
 
-\begin{lstlisting}[caption={Transaction code, do\_move, optimized for size.
+\begin{lstlisting}[caption={Transaction code generation for do\_move, optimized for size.
 Eight instructions, seven memory accesses (five writes).},label=lst:moveOs]
      mov    (%rsi),%rax
      movslq %edx,%rdx
@@ -122,7 +125,7 @@ Eight instructions, seven memory accesses (five writes).},label=lst:moveOs]
      movq   $0x0,(%rsi)
 \end{lstlisting}
 
-\begin{lstlisting}[caption={Transaction code, do\_insert, optimized for size.
+\begin{lstlisting}[caption={Transaction code generation for do\_insert, optimized for size.
 Four instructions, three memory accesses (three writes).},label=lst:insertOs]
      movslq %r8d,%r8
      mov    %rdx,(%rsi)
