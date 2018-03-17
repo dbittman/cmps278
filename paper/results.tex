@@ -18,12 +18,12 @@ in Figure~\ref{fig:moves}, and shows that not reinserting elements produces a
 significant reduction in the number of moves done during insert operations.
 Since Cuckoo hashing is heavily dependent on hash function and workload, these
 tests were performed by inserting elements with random keys and counting the
-movements done in total. The comparison system is a nearly identical
+movements done in total, averaged over many runs with different seeds.
+The comparison system is a nearly identical
 implementation of Cuckoo hashing that reinserts all elements during a rehash.
 The error bars show standard deviation, and demonstrate that the non-reinserting
-rehashing strategy is more dependent on workload and hash function that standard
-cuckoo hashing. However, the huge reduction in movements overall indicates that
-this strategy has its merits.
+rehashing strategy is less dependent on workload and hash function than standard
+cuckoo hashing.
 
 \subsection{Performance}
 
