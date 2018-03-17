@@ -43,9 +43,32 @@ The design goals of NVKV are five-fold:
 		and backwards compatibility is vital for increasing adoption.
 \end{enumerate}
 
-Common themes: small sub-operations, avoid movement.
+The design choices in NVKV fit some common themes. The first theme is to make
+each update to the database that is done by an operation like insert a series of
+small, consistent sub-operations. Each of these sub-operations moves the
+database from one valid state to another, possibly with the use of a transaction
+(which, to avoid confusion, in this document means ``a transaction using
+transactional memory on some memory``). The database is carefully designed to
+allow it to \textit{always} construct each operation out of a bounded number of
+sub-operations that keep the database in a consistent state. The second common
+theme is to avoid data movement as much as possible. While this is not always
+possible when rehashing, NVKV bounds the number of moved words on \textit{every}
+insert.
 
-Limits of transactions... "when I say transaction i refer to a mem transaction"
+One significant reason we strive for these goals is that we are designing a
+system using a transactional memory primitive that does not exist yet. However,
+we can expect that such a system will operate somewhat like a transaction: a
+\texttt{transaction-begin}, followed by a bounded number of instructions,
+followed by \texttt{transaction-commit} or \texttt{abort}. We expect the number
+of instructions and the number of memory accesses allowed inside the transaction
+to be bounded, at least due to the performance costs of having large
+transactions, but at most because the hardware support might directly limit it.
+Thus, we are designing pessimistically; should transactional memory support
+exceed our expectations, NVKV will still work, however we can reasonably assume
+that it will fit within the requirements of most reasonable transactional memory
+proposals. The assumption is that both number of instructions and number of
+memory accesses matter, although the number of memory accesses is more
+important.
 
 \subsection{Interface}
 
@@ -116,32 +139,17 @@ persistent, and virtual).
 
 \subsection{Indexing}
 
-\subsection{Data Storage}
-\label{sec:ds}
-
-\subsection{Transaction Sizes}
-
-Key points: transactions have limited size, both in space and time. A
-transaction cannot take too many instructions, nor have too many memory
-accesses. Of course, we're designing under an assumption about how transactions
-will work... they may turn out differently. So we're designing pessimistically.
-
-num memory accesses matter more than number of instructions, but the total length
-matters too.
-
-We can also optimize certain parts of the code with Os and other parts with
-O2/3.
-
-
-
-
-
-
-
-
-
-
-
+The indexing structure we are using is a hash table, exploiting the
+random-access and non-block-oriented nature of BNVM~\cite{Debnath:2016ht}. To
+deal with collisions, we have chosen Cuckoo hashing~\cite{Pagh:2004}, a hashing
+scheme that results in good cache locality, bounded lookups, and reasonably high
+load-factor. Each key is hashed to two buckets, $b_1 = H_1(k)$ and $b_2 =
+H_2(k)$, where $k$ is the key and $H_1$ and $H_2$ are two different hash
+functions. When inserting, bucket $b_1$ is evaluated, and if it is empty, the
+key is inserted there. If it is not empty, we look at $b_2$. If \textit{it} is
+empty, we can insert there. Otherwise, we must \textit{move} the contents of
+either $b_1$ or $b_2$ before we can insert. This process is shown in
+figure~\ref{fig:insert}, where $B$ must move for $A$ to be inserted.
 
 \begin{figure}
 \centering
@@ -151,14 +159,68 @@ partner bucket.}
 \label{fig:insert}
 \end{figure}
 
+
+To move $B$, we determine its partner bucket (the other bucket it hashes to),
+and try to move it there. If there is an item in the partner bucket, we
+recursively try to move until we are successful. Note that cycles are possible;
+should a cycle occur (or a threshold number of moves is reached), the move is
+aborted and a rehash is triggered. When inserting, if both $b_1$ and $b_2$ are
+full, and neither can be moved, the hash table is rehashed---the length is
+doubled.
+
+\paragraph{Rehashing}
+
+
+
+
+
 \begin{figure}
 \centering
 \hspace*{1mm}
-\includegraphics[width=100mm]{fig/cuckoo_rehash}
+\includegraphics[width=90mm]{fig/cuckoo_rehash}
 \caption{Extending the hash table to level $n$ without reinserting existing
 elements. Level $n-1$ has existing elements that are not moved during the
 expansion, and the newly inserted element is more than twice as likely to find
 an empty bucket to insert into.}
 \label{fig:rehash}
 \end{figure}
+
+
+
+
+
+
+\paragraph{Why Cuckoo?}
+
+
+
+
+
+
+
+
+\subsection{Data Storage}
+\label{sec:ds}
+
+Data storage of keys and values is currently implemented much like an arena
+allocator; an ``end'' pointer is kept and incremented whenever a new \texttt{DBT} is
+recorded. Recording a \texttt{DBT} involves copying the data into the data
+address space along with its length. The address of the copied-in length and
+data is calculated, after which it can be used to refer to the data internally.
+The end pointer is incremented by the data length plus the size of the length
+field, allowing the next \texttt{DBT} to be written directly after it. Note
+that, because of the address space interleaving described above, adding data to
+the database never causes it to interfere with the metadata.
+
+To ensure persistence and consistency, the end pointer is not updated until
+after the data is copied in. After each word of data copied, the cache-line
+is flushed and a memory fence is applied, ensuring that the data be flushed back
+to BNVM. A potential optimization could be to only flush when crossing a
+cache-line boundary. The reason we do not use a transaction here is that the
+data could be arbitrarily long. Once the data is copied, the end pointer is
+incremented and flushed. Again, a transaction is not needed here because we are
+only updating a single value.
+
+
+
 
