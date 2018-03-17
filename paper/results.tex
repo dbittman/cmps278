@@ -1,6 +1,12 @@
 \section{Results and Analysis}
 
-Same test program run linked to each (because portability).
+To test and ensure portability, the same exact driver program was run both with
+\bdb and with NVKV. The program inserted keys, followed by looking them up (both
+keys that had been inserted, and keys that had not). The tests were performed on
+an Intel Core i7 7700K at 4.2GHz with 16GB of RAM. To ensure that the SSD
+overhead did not interfere with the tests, all database files were created in a
+RAM filesystem, thus, all overhead associated with syncing comes from the
+implementation's mechanism for persisting updates.
 
 \subsection{Data Movement in the Hash Table}
 
