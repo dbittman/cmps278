@@ -3,7 +3,7 @@
 Byte-addressable non-volatile memory (BNVM) promises to fundamentally change
 how applications access persistent
 storage~\cite{lee_architecting_2009,fox:2001feram,sttram,wong2010phase,intel3dxpoint},
-especially when the memory heirarchy changes to include BNVM along-side DRAM,
+especially when the memory hierarchy changes to include BNVM along-side DRAM,
 and even replacing it entirely.
 Changes are expected across the system stack~\cite{condit:sosp09}, with
 processors introducing new feature sets, to operating systems providing new I/O
@@ -23,7 +23,7 @@ problems of consistency are only magnified with the fine-grained writes of
 byte-addressable storage. Whereas writes to DRAM would disappear when power is
 cycled, corrupted data structures in BNVM persist across power cycles, meaning
 applications must expend additional effort to prevent such corruption that was
-not required when the storage heirarchy was separated\footnote{Where we could
+not required when the storage hierarchy was separated\footnote{Where we could
 rely on block-oriented storage to ease a lot of the difficulty.}. An additional
 difficulty is energy use, where prior systems could both buffer writes in DRAM
 (which had power usage characteristics that were largely independent of write
@@ -35,7 +35,7 @@ technologies have significantly lower write endurance than DRAM.
 
 To explore these problems, we have developed NVKV, a non-volatile key-value
 store that provides backwards compatibility with the \bdb programming interface.
-The prototype implements insert and lookup, athough delete would also be trivial
+The prototype implements insert and lookup, although delete would also be trivial
 to implement. It organizes and stores data in such a way so that it is easy to
 perform all operations using simple and small memory transactions provided by
 future software or hardware transactional memory. To support such a design, it
@@ -45,7 +45,7 @@ required to implement insert to be small (fewer than 5 memory access), and that
 it was relatively easy to ensure the database could never be corrupted by
 unexpected power failures. Furthermore, we found the performance to be
 significantly improved over \bdb, likely because our system was designed for
-such a memory heirarchy, where \bdb was not. Finally, the Cuckoo hashing variant
+such a memory hierarchy, where \bdb was not. Finally, the Cuckoo hashing variant
 we designed resulted in significantly reduced data movement, which is important
 for reducing power and wear on BNVM.
 

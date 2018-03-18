@@ -54,11 +54,11 @@ scheme. Finally, a more detailed analysis of this scheme should be done.
 
 Non-volatile memory opens up the possibility of a new generation of applications
 with new, fundamentally different designs compared to applications designed for
-a separated storage heirarchy. Key-value stores need to be similarly redesigned
+a separated storage hierarchy. Key-value stores need to be similarly redesigned
 with the new consistency requirements and low-latency access in mind. NVKV
 attempts to tackle these challenges through the use of \textit{direct} access to
 BNVM and transactional memory to ensure consistency. These two requirements
-resulted in a system with small transacation sizes, always-consistent
+resulted in a system with small transaction sizes, always-consistent
 sub-operations, and bounded steps for insert.
 
 It is possible that transactional memory will appear differently than it is
@@ -74,8 +74,8 @@ to the design, code complexity, and performance of the system could be
 achieved by using the non-reinsert rehashing scheme described above. Cuckoo
 hashing fits well with this scheme, resulting in unexpected positive effects
 when using it. Finally, the overall performance of NVKV was significantly
-improved over \bdb, likely due to implementing consistency mechanisms taylored
-for the technology rather than grafting old mechanisms onto a new storage heirarchy.
+improved over \bdb, likely due to implementing consistency mechanisms tailored
+for the technology rather than grafting old mechanisms onto a new storage hierarchy.
 
 
 Certainly, NVKV has significant design faults and limitations; however, it

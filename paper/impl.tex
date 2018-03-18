@@ -87,7 +87,6 @@ Four instructions, four memory accesses (three writes).},label=lst:insertO3]
 \end{lstlisting}
 %$
 
-
 After applying size optimizations, as shown in Listings~\ref{lst:moveOs}
 and~\ref{lst:insertOs}, the insert block is smaller with fewer memory
 references. In fact, it no longer contains the false dependency, and contains
@@ -101,10 +100,10 @@ operations to do the copy in this case, relying instead on simple \texttt{mov}s.
 Why this is the case is unknown, although we speculate that the reason gcc
 chose to do these optimizations was to reduce the number of times these code
 blocks appeared in the generated assembly. Whereas the speed-optimized versions
-appeared in numerous places throughout the code, the size-optimzed ones were
+appeared in numerous places throughout the code, the size-optimized ones were
 condensed into one location to reduce size, and therefore gcc was unable to
 prove that the \texttt{xmm} registers were available for use. While the result
-appears to have more memory references, the two blocks, size and speed optimzed,
+appears to have more memory references, the two blocks, size and speed optimized,
 touch exactly the same amount of memory\footnote{The \texttt{xmm} registers
 access larger amounts of memory because they are vector registers.}
 (as expected, since they do the same thing).
