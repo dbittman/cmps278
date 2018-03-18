@@ -52,3 +52,45 @@ scheme. Finally, a more detailed analysis of this scheme should be done.
 
 \section{Conclusion}
 
+Non-volatile memory opens up the possibility of a new generation of applications
+with new, fundamentally different designs compared to applications designed for
+a separated storage heirarchy. Key-value stores need to be similarly redesigned
+with the new consistency requirements and low-latency access in mind. NVKV
+attempts to tackle these challenges through the use of \textit{direct} access to
+BNVM and transactional memory to ensure consistency. These two requirements
+resulted in a system with small transacation sizes, always-consistent
+sub-operations, and bounded steps for insert.
+
+It is possible that transactional memory will appear differently than it is
+presented in this paper. However, we expect that the pessimistic nature of our
+transactional memory use will allow it to be applicable to a wide variety of
+transactional memory implementations. We found that the transactions on memory
+required by insert were small, and that other memory operations could be
+implemented without transactions. The transaction sizes were both improved and
+worsened when compiling with size optimizations, and each transaction was not
+optimal in terms of instruction and memory access count, pointing to the need
+for language support for transactions. We found that a significant improvement
+to the design, code complexity, and performance of the system could be
+achieved by using the non-reinsert rehashing scheme described above. Cuckoo
+hashing fits well with this scheme, resulting in unexpected positive effects
+when using it. Finally, the overall performance of NVKV was significantly
+improved over \bdb, likely due to implementing consistency mechanisms taylored
+for the technology rather than grafting old mechanisms onto a new storage heirarchy.
+
+
+Certainly, NVKV has significant design faults and limitations; however, it
+clearly demonstrates the need to redesign applications for the underlying
+storage technology. This is not a surprise; we have seen this numerous times as
+technologies become cheaper or more readily available. However, the longer we
+wait, the harder it will be to adopt new designs for applications as the
+stop-gap measures that are introduced (such as BNVM presented as block-devices)
+become entrenched. We must pave a new way forward with exciting new ideas
+to make best use of these technologies and not hold ourselves to designs that
+will be relics of the past.
+
+
+
+
+
+
+

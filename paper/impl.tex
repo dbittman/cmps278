@@ -2,7 +2,9 @@
 
 The NVKV library was implemented with about 600 lines of dense C code, including
 a 50 line header file to be used by applications. It does not implement much of
-the functionality of \bdb because that is out of scope. Much of the complexity
+the functionality of \bdb because that is out of scope (or, in the case of
+delete, leaves it unimplemented because it is nearly identical to lookup, with a
+transaction to clear a flag). Much of the complexity
 of the code has to do with translating pointers. For example, the hash table
 stores not the keys themselves (since they can be arbitrary length), but
 pointers to the keys in the data address space. To translate such a pointer to
