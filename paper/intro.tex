@@ -1,2 +1,66 @@
 \section{Introduction}
 
+Byte-addressable non-volatile memory (BNVM) promises to fundamentally change
+how applications access persistent
+storage~\cite{lee_architecting_2009,fox:2001feram,sttram,wong2010phase,intel3dxpoint},
+especially when the memory heirarchy changes to include BNVM along-side DRAM,
+and even replacing it entirely.
+Changes are expected across the system stack~\cite{condit:sosp09}, with
+processors introducing new feature sets, to operating systems providing new I/O
+models, to applications redesigned around low-latency persistent memory. Of
+particular note is the additional \textit{power} given to middleware
+applications---the operating system will provide more direct access to
+persistent storage to middleware applications and
+libraries~\cite{bittman-ssrctr-17-01}, allowing these applications more control
+over their storage techniques and access without operating system interposition.
+This has been a long debated topic, and with the advent of BNVM the debate is
+coming closer to being settled in favor of applications getting more control and
+power.
+
+Of course, with greater power comes greater responsibility, and this is even
+more true with BNVM. Data consistency issues threaten most applications, and the
+problems of consistency are only magnified with the fine-grained writes of
+byte-addressable storage. Whereas writes to DRAM would disappear when power is
+cycled, corrupted data structures in BNVM persist across power cycles, meaning
+applications must expend additional effort to prevent such corruption that was
+not required when the storage heirarchy was separated\footnote{Where we could
+rely on block-oriented storage to ease a lot of the difficulty.}. An additional
+difficulty is energy use, where prior systems could both buffer writes in DRAM
+(which had power usage characteristics that were largely independent of write
+bandwidth) and coalesce them to persistent storage. With BNVM, however, the
+power scales with write bandwidth at a much higher rate, meaning writes must be
+minimized to minimize power. Minimizing writes has the additional benefit of
+reducing wear on the memory cells, which is important since many candidate
+technologies have significantly lower write endurance than DRAM.
+
+To explore these problems, we have developed NVKV, a non-volatile key-value
+store that provides backwards compatibility with the \bdb programming interface.
+The prototype implements insert and lookup, athough delete would also be trivial
+to implement. It organizes and stores data in such a way so that it is easy to
+perform all operations using simple and small memory transactions provided by
+future software or hardware transactional memory. To support such a design, it
+indexes data using a variant of Cuckoo hashing that does not require moving
+items when rehashing them. We found that this design allowed the transactions
+required to implement insert to be small (fewer than 5 memory access), and that
+it was relatively easy to ensure the database could never be corrupted by
+unexpected power failures. Furthermore, we found the performance to be
+significantly improved over \bdb, likely because our system was designed for
+such a memory heirarchy, where \bdb was not. Finally, the Cuckoo hashing variant
+we designed resulted in significantly reduced data movement, which is important
+for reducing power and wear on BNVM.
+
+The main contributions of this work are:
+
+\begin{enumerate}
+
+\item We motivate the need to reevaluate the design of a key-value store for
+BVNM.
+\item We build a key-value store, NVKV, which uses transactional
+memory to implement updates, and show that is has significantly improved
+performance over \bdb.
+\item We show that a simple mechanism to minimize writes (simply not reinserting
+after expanding the hash table) is viable and does not significantly hurt
+overall performance (and in fact, smooths latency spikes caused by expanding the
+hash table).
+\end{enumerate}
+

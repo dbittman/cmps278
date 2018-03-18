@@ -1,4 +1,4 @@
-\documentclass[twocolumn,10pt]{article}
+\documentclass[twocolumn,11pt]{article}
 \usepackage[margin=1in]{geometry}
 \usepackage[T1]{fontenc}
 \usepackage[sort]{natbib}
@@ -58,8 +58,28 @@ Database Design and Implementation: Class Project\\\vspace{-2mm}Instructor: Shel
 \section*{Abstract}
 
 
-%TO cite:
-%kolli:asplos16 lu:tos16, wang:cal15(transactionS)
+Byte-addressable non-volatile memory (BNVM) will change the memory heirarchy, and
+applications must be ready to exploit the advantages afforded by these
+technologies while minimizing their weaknesses. Changes in power use
+characteristics, consistency requirements, and wear-out means that systems
+designed for other memory hierarchies and technologies are not the best fit for
+BNVM. We need to think about how to best build systems and applications with the
+need for fine-grained consistency, the need to minimize writes to reduce power
+and wear-out, and the desire to provide low-latency access to persistent storage
+without the operating system getting in the way at every turn.
+
+
+One example of applications which could be redesigned is key-value stores. We
+have built NVKV, a key-value store that attempts to minimize writes while
+providing low-latency access, all while remaining consistent regardless of power
+cycles and providing backwards compatibility with \bdb. It does this through the
+use of transactional memory, or at least what we expect transactional memory to
+look like, while minimizing transaction sizes. It provides insert and lookup
+functionality with a significant performance improvement over \bdb, while
+providing an improvement in consistency safety with respect to power cycles, and
+provides better quality of service insert operations. Finally, we demonstrate
+that a new Cuckoo hashing variant can reduce data movement and improve the
+performance of rehashing significantly.
 
 
 \input{intro}
@@ -75,6 +95,17 @@ Database Design and Implementation: Class Project\\\vspace{-2mm}Instructor: Shel
 \input{related}
 
 \input{concl}
+
+\section*{Availability}
+The code and data for this project can be found
+at \url{https://github.com/dbittman/cmps278}.
+
+\section*{Acknowledgements}
+
+Thanks to Matt Bryson for helping collect some of the papers for energy use
+in PCM and DRAM (these results were used for another project in the SSRC in a
+more detailed manner, but are mentioned here because they are relevant to
+the motivation).
 
 \bibliographystyle{plain}
 \bibliography{bib/csrg,main,pcm_hardware}

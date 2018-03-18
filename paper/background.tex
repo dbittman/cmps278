@@ -44,6 +44,14 @@ extremely energy efficient in read-mostly workloads, it will likely find its
 place in IoT devices without DRAM. Thus, key-value stores must be designed for
 this all-BNVM model.
 
+Another difference between BNVM and DRAM is the lower write
+endurance~\cite{dhiman_pdram:_2009}. Whereas DRAM has effectively infinite
+endurance, PCM, for example, can only be written $10^9$ to $10^{12}$ times,
+meaning data structures must be write-minimized to extend its lifetime. This is
+commonly done when designing data structure for BNVM, which implies that
+key-value stores should also strive for similar goals when being built for these
+technologies.
+
 \paragraph{Transactional Memory}
 
 Many BNVM systems focus on consistency of data structures due to the
