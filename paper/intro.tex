@@ -3,11 +3,10 @@
 Byte-addressable non-volatile memory (BNVM) promises to fundamentally change
 how applications access persistent
 storage~\cite{lee_architecting_2009,fox:2001feram,sttram,wong2010phase,intel3dxpoint},
-especially when the memory hierarchy changes to include BNVM along-side DRAM,
-and even replacing it entirely.
-Changes are expected across the system stack~\cite{condit:sosp09}, with
+especially when the memory hierarchy changes to include BNVM along-side DRAM.
+Changes are expected across the system stack~\cite{condit:sosp09}, from
 processors introducing new feature sets, to operating systems providing new I/O
-models, to applications redesigned around low-latency persistent memory. Of
+models, to applications being redesigned around low-latency persistent memory. Of
 particular note is the additional \textit{power} given to middleware
 applications---the operating system will provide more direct access to
 persistent storage to middleware applications and
@@ -23,8 +22,8 @@ problems of consistency are only magnified with the fine-grained writes of
 byte-addressable storage. Whereas writes to DRAM would disappear when power is
 cycled, corrupted data structures in BNVM persist across power cycles, meaning
 applications must expend additional effort to prevent such corruption that was
-not required when the storage hierarchy was separated\footnote{Where we could
-rely on block-oriented storage to ease a lot of the difficulty.}. An additional
+not required when the storage hierarchy was separated\footnote{We could
+rely on block-oriented storage to ease this.}. An additional
 difficulty is energy use, where prior systems could both buffer writes in DRAM
 (which had power usage characteristics that were largely independent of write
 bandwidth) and coalesce them to persistent storage. With BNVM, however, the
@@ -56,11 +55,11 @@ The main contributions of this work are:
 \item We motivate the need to reevaluate the design of a key-value store for
 BVNM.
 \item We build a key-value store, NVKV, which uses transactional
-memory to implement updates, and show that is has significantly improved
+memory to implement updates, and show that it has significantly improved
 performance over \bdb.
 \item We show that a simple mechanism to minimize writes (simply not reinserting
 after expanding the hash table) is viable and does not significantly hurt
-overall performance (and in fact, smooths latency spikes caused by expanding the
+overall performance (and in fact smooths latency spikes caused by expanding the
 hash table).
 \end{enumerate}
 

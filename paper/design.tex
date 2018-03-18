@@ -280,7 +280,7 @@ is flushed and a memory fence is applied, ensuring that the data be flushed back
 to BNVM.
 The reason we do not use a transaction here is that the
 data could be arbitrarily long. Once the data is copied, the end pointer is
-incremented and flushed, again, without a transaction because we are
+incremented and flushed, again without a transaction because we are
 only updating a single value.
 
 

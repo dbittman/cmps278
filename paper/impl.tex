@@ -1,6 +1,6 @@
 \section{Implementation}
 
-The NVKV library was implemented with about 600 lines of dense C code, including
+The NVKV library was implemented with upwards of 1000 lines of dense C code, including
 a 50 line header file to be used by applications. It does not implement much of
 the functionality of \bdb because that is out of scope (or, in the case of
 delete, leaves it unimplemented because it is nearly identical to lookup, with a
@@ -50,7 +50,7 @@ when rehashing means that the hash table uses only two transaction blocks for
 \item \texttt{do\_insert}: Write a new key and value pointer into a bucket.
 \end{enumerate}
 %TODO: make sure we motivate this earlier
-Each of these transaction blocks is implemented as a separate function so I
+Each of these transaction blocks is implemented as a separate function so we
 could experiment with the results of using \texttt{-Os} to optimize the blocks
 for size rather than speed, an important potential optimization for
 transactions that are limited in size or do not scale well with the number of

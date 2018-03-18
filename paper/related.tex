@@ -18,9 +18,9 @@ on building full file systems for non-volatile
 memory~\cite{wu:asplos94,xu:fast16,xu:sosp17,dulloor:eurosys14}, which is orthogonal to this work because file
 systems fullfill different goals than key-value stores.
 
-\paragraph{Hashing As an BNVM Indexing Structure}
+\paragraph{Hash Tables as BNVM Indexing Structures}
 
-Many have studied the resurgence of hashing has a non-volatile-storage-based
+Many have studied the resurgence of hashing as a non-volatile-storage-based
 indexing structure due to the random-access,
 non-block-oriented nature of the storage technologies. Debnath \etal discuss
 improving hash tables for BNVM via several techniques that primarily reduce the
@@ -50,16 +50,16 @@ database management systems for non-volatile memories. For example, Arulraj
 \etal discuss the implications of BNVM for a DBMS~\cite{Arulraj:2017}. While
 many of the lessons there are relevant for key-value stores, many of the design
 requirements and implementation details are due to the additional requirements
-of a DBMS over a key value store, and they do not take into account
+of a DBMS over a key-value store, and they do not take into account
 transactional memory limitations.
 
 
 Echo is another key-value store designed for non-volatile main
 memories~\cite{echo}, however it is also designed with DRAM caching and an
 explicit commit operation in mind. In constrast, NVKV persists automatically on
-every operations without an interposition of DRAM. A similar problem can be
+every operation without an interposition of DRAM. A similar problem can be
 found in Write-behind logging~\cite{Arulraj:2016wbl}, which uses a novel approach to do logging on
 transactions in non-volatile memory. It similarly limits itself to copying
-between DRAM and BNVM, as does NVMcached~\cite{Wu:2016}, which also does not
+between DRAM and BNVM, as does NVMcached~\cite{Wu:2016}, neither of which
 take transactional memory into account.
 
